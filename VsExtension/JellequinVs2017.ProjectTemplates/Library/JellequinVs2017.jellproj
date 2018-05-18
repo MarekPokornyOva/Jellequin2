@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<PropertyGroup Label="Globals">
+		<!--JellPath>c:\Program Files\Jellequin2017\</JellPath-->
+		<JellequinExtensionPath>$([System.IO.Path]::GetDirectoryName($([System.String]::Join(";",$([System.IO.Directory]::GetFiles($([System.IO.Path]::GetDirectoryName($(PkgDefApplicationConfigFile))),"Jellequin.targets",SearchOption.AllDirectories))))))\</JellequinExtensionPath>
+	</PropertyGroup>
+
+	<Import Project="$(JellequinExtensionPath)Jellequin.props" />
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" Label="Configuration">
+		<OutputPath>bin\Debug\</OutputPath>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'" Label="Configuration">
+		<OutputPath>bin\Release\</OutputPath>
+	</PropertyGroup>
+
+	<PropertyGroup Label="Configuration">
+		<OutputType>library</OutputType>
+		<AssemblyName>$(MSBuildProjectName)</AssemblyName>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<SchemaVersion>2.0</SchemaVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="Library.jell.js">
+			<SubType>Code</SubType>
+		</Compile>
+	</ItemGroup>
+
+	<Import Project="$(JellequinExtensionPath)\Jellequin.targets" />
+
+	<!-- This next bit is required unless the macro used to Import your targets is defined in an MSBuild toolset. -->
+	<ProjectExtensions>
+		<ProjectCapabilities>
+			<ProjectConfigurationsDeclaredAsItems />
+		</ProjectCapabilities>
+	</ProjectExtensions>
+</Project>

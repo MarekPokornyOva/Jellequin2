@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VSTemplate Version="3.0.0" Type="ProjectGroup" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+	<!--https://msdn.microsoft.com/en-us/library/ms185308.aspx-->
+	<TemplateData>
+		<Name></Name>
+		<Description></Description>
+		<Icon></Icon>
+		<ProjectType>Jellequin</ProjectType>
+		<Hidden>true</Hidden>
+	</TemplateData>
+	<TemplateContent>
+		<ProjectCollection>
+			<ProjectTemplateLink>ConsoleApplication\JellequinVs2017Console.vstemplate</ProjectTemplateLink>
+			<ProjectTemplateLink>Library\JellequinVs2017Library.vstemplate</ProjectTemplateLink>
+		</ProjectCollection>
+	</TemplateContent>
+</VSTemplate>

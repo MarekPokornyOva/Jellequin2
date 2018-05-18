@@ -1,0 +1,215 @@
+﻿import runtimeExtsDll from "System.Runtime.Extensions, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a";
+var os=runtimeExtsDll.System.Environment.OSVersion.Platform;
+var PlatformID=runtimeExtsDll.System.PlatformID;
+//debugger;
+if (os != PlatformID.Win32NT)
+{
+	 Console.WriteLine(".Net Core on the platform doesn't support all necessary Console features. Please, run this on Windows NT platform.");
+	 return;
+}
+
+import consoleDll from "System.Console, Version=4.1.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a";
+//import runtimeExtsDll from "System.Runtime.Extensions, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a";
+var Console=consoleDll.System.Console;
+var ConsoleColor=consoleDll.System.ConsoleColor;
+var ConsoleKey=consoleDll.System.ConsoleKey;
+
+/*debugger;*/
+var playgroundSize = {X:41,Y:41};
+var snakeBody=[];
+var foodPos;
+
+function Init()
+{
+	 Console.CursorVisible=false;
+	 Console.SetWindowSize(playgroundSize.X, playgroundSize.Y);
+}
+
+function CreatePlayground()
+{
+	 Console.BackgroundColor=ConsoleColor.DarkRed;
+	 Console.ForegroundColor=ConsoleColor.Red;
+
+	 Console.SetCursorPosition(0, 0);
+	 var border = 'X'.repeat(playgroundSize.X);
+	 Console.Write(border);
+	 for (var a = 1; a<playgroundSize.Y-1; a++)
+	 {
+		  Console.SetCursorPosition(0, a);
+		  Console.Write('X');
+		  Console.SetCursorPosition(playgroundSize.X-1, a);
+		  Console.Write('X');
+	 }
+	 Console.SetCursorPosition(0, playgroundSize.Y-1);
+	 Console.Write(border);
+
+	 Console.BackgroundColor=ConsoleColor.Black;
+}
+
+function InitSnake()
+{
+	snakeBody.push({ X:playgroundSize.X/2, Y:playgroundSize.Y/2 });
+}
+
+function PaintSnake()
+{
+	var a = 0;
+	for (var pi=0;pi<snakeBody.length;pi++)
+	{
+		var p=snakeBody[pi];
+		switch (a)
+		{
+			case 0:
+				Console.ForegroundColor=ConsoleColor.Yellow;
+				break;
+			case 1:
+				Console.ForegroundColor=ConsoleColor.DarkYellow;
+				break;
+		}
+
+		Console.SetCursorPosition(p.X, p.Y);
+		Console.Write(a++==0?'@':'O');
+	}
+}
+
+function EraseSnake()
+{
+	for (var pi=0;pi<snakeBody.length;pi++)
+	{
+		var p=snakeBody[pi];
+		Console.SetCursorPosition(p.X, p.Y);
+		Console.Write(' ');
+	}
+}
+
+function EraseFood()
+{
+	Console.SetCursorPosition(foodPos.X,foodPos.Y);
+	Console.Write(' ');
+}
+
+function IsInBody(point,includeHead)
+{
+	var skip=!includeHead;
+	for (var pi=0;pi<snakeBody.length;pi++)
+	{
+		var bodyPoint=snakeBody[pi];
+		if (skip)
+		{
+			skip=false;
+			continue;
+		}
+		if ((bodyPoint.X==point.X) && (bodyPoint.Y==point.Y))
+			return true;
+	}
+	return false;
+}
+
+var _rand = new runtimeExtsDll.System.Random();
+function CreateAndPaintFood()
+{
+	while (true)
+	{
+		foodPos = { X:_rand.Next(playgroundSize.X-2)+1, Y:_rand.Next(playgroundSize.Y-2)+1 };
+		if (!IsInBody(foodPos, true))
+			break;
+	}
+
+	Console.ForegroundColor=ConsoleColor.Green;
+	Console.SetCursorPosition(foodPos.X, foodPos.Y);
+	Console.Write('$');
+}
+
+function Restart(firstTime)
+{
+	if (!firstTime)
+	{
+		EraseSnake();
+		EraseFood();
+	}
+	CreatePlayground();
+	InitSnake();
+	PaintSnake();
+	CreateAndPaintFood();
+}
+
+function Finish()
+{
+	 Console.Clear();
+	 Console.ForegroundColor=ConsoleColor.Gray;
+	 Console.SetCursorPosition(0, 0);
+	 Console.WriteLine("Bye!");
+}
+
+function Dead()
+{
+	Restart(false);
+}
+
+Init();
+Restart(true);
+
+var key;
+while ((key=Console.ReadKey(true).Key)!=ConsoleKey.Escape)
+{
+	var snakeBodyLenM1=snakeBody.length-1;
+	var tail = snakeBody[snakeBodyLenM1];
+	tail={X:tail.X, Y:tail.Y}; //.Clone();
+
+	EraseSnake();
+	var head = snakeBody[0];
+	for (var a = snakeBodyLenM1; a>0; a--)
+	{
+		snakeBody[a].X=snakeBody[a-1].X;
+		snakeBody[a].Y=snakeBody[a-1].Y;
+	}
+	switch (key)
+	{
+		case ConsoleKey.LeftArrow:
+			if (head.X==1)
+			{
+				Dead();
+				continue;
+			}
+			head.X--;
+			break;
+		case ConsoleKey.RightArrow:
+			if (head.X==playgroundSize.X-2)
+			{
+				Dead();
+				continue;
+			}
+			head.X++;
+			break;
+		case ConsoleKey.UpArrow:
+			if (head.Y==1)
+			{
+				Dead();
+				continue;
+			}
+			head.Y--;
+			break;
+		case ConsoleKey.DownArrow:
+			if (head.Y==playgroundSize.Y-2)
+			{
+				Dead();
+				continue;
+			}
+			head.Y++;
+			break;
+	}
+	if (head.X==foodPos.X && head.Y==foodPos.Y)
+	{
+		snakeBody.push(tail);
+		CreateAndPaintFood();
+	}
+	/*if (IsInBody(head, false))
+	{
+		//if eaten itself, die
+		Dead();
+		continue;
+	}*/
+	PaintSnake();
+}
+	
+Finish();

@@ -1,0 +1,58 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!-- Add properties required for WPF -->
+	<PropertyGroup>
+		<MSBuildAllProjects>
+			$(MSBuildAllProjects);Jellequin.targets
+		</MSBuildAllProjects>
+		<DefaultLanguageSourceExtension>.js</DefaultLanguageSourceExtension>
+		<Language>Jellequin</Language>
+	</PropertyGroup>
+
+	<!--Import the standards targets-->
+	<Import Project="$(MSBuildThisFileDirectory)\CustomProject.targets" />
+	<Import Project="$(MSBuildBinPath)\Microsoft.Common.targets" />
+
+	<!--Reference the assembly where our tasks are defined-->
+	<!--UsingTask TaskName="Jellequin.CompilerTasks.JellequinCompilerTask" AssemblyFile="JellequinVs.dll" /-->
+	<UsingTask TaskName="Jellequin.CompilerTasks.JellequinCompilerTask" AssemblyFile="c:\Users\pokormar\AppData\Local\Microsoft\VisualStudio\14.0Exp\Extensions\JellequinVs2015.ProjectType\Jellequin Console Application\1.0\JellequinVs2015.dll" />
+
+	<!--Compile target (this is the target that calls the compiler task)-->
+	<Target Name="JellequinCompilerTarget"
+			  Inputs="@(Compile);@(ReferencePath);@(ManifestResourceWithNoCulture);@(ManifestNonResxWithNoCultureOnDisk);@(CompiledLicenseFile)"
+			  Outputs="@(IntermediateAssembly)">
+		<Message Text="Building: @(IntermediateAssembly)" />
+		<JellequinCompilerTask
+		  SourceFiles="@(Compile)"
+		  OutputAssembly="@(IntermediateAssembly)"
+		  ReferencedAssemblies="@(ReferencePath)"
+		  TargetKind="$(OutputType)"
+		  DebugSymbols="$(DebugSymbols)"
+		  ProjectPath="$(MSBuildProjectDirectory)"
+      />
+	</Target>
+
+	<!--This is an override of CoreCompile to have our IronPythonCompilerTarget be called at compile time-->
+	<Target
+		 Name="CoreCompile"
+		 Inputs="@(Compile);
+              @(ReferencePath)"
+		 Outputs="@(IntermediateAssembly)"
+		 DependsOnTargets="$(CoreCompileDependsOn);JellequinCompilerTarget"
+    >
+	</Target>
+
+	<Target Name="CreateManifestResourceNames"/>
+
+	<ItemGroup>
+		<ProjectCapability Include="ReferencesFolder"/>
+
+		<PropertyPageSchema Include="$(MSBuildThisFileDirectory)Rules\csProjectItemsSchema.xaml;"/>
+		<PropertyPageSchema Include="$(MSBuildThisFileDirectory)Rules\csharp.xaml;">
+			<Context>File</Context>
+		</PropertyPageSchema>
+		<PropertyPageSchema Include="$(MSBuildThisFileDirectory)Rules\csharp.browseobject.xaml;">
+			<Context>BrowseObject</Context>
+		</PropertyPageSchema>
+	</ItemGroup>
+</Project>
