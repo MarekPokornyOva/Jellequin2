@@ -2,6 +2,15 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageTags>EcmaScript JavaScript Compiler</PackageTags>
+    <RepositoryUrl>https://github.com/MarekPokornyOva/Jellequin2</RepositoryUrl>
+    <PackageIconUrl>https://github.com/MarekPokornyOva/Jellequin2/raw/master/VsExtension/JellequinVs2017.ProjectType/Jellequin.ico</PackageIconUrl>
+    <PackageProjectUrl>https://github.com/MarekPokornyOva/Jellequin2</PackageProjectUrl>
+    <Authors>Marek Pokorný</Authors>
+    <Company>MpSoft</Company>
+    <Product>Jellequin</Product>
+    <Description>Jellequin is EcmaScript compiler to CLR (.NET) assembly with debug ability. Runtime allows to launch/use an assembly in hosting application.</Description>
   </PropertyGroup>
 
   <ItemGroup>
