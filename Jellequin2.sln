@@ -31,7 +31,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		Documentation.md = Documentation.md
 		README.md = README.md
+		ReleaseNotes.md = ReleaseNotes.md
 	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jquarium", "Samples\Jquarium\Jquarium.csproj", "{1D547F80-3F84-4033-A00A-C7ED37D0195F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -75,6 +78,10 @@ Global
 		{33E11098-B0E7-4942-96DF-0E509CC5BB16}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{33E11098-B0E7-4942-96DF-0E509CC5BB16}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{33E11098-B0E7-4942-96DF-0E509CC5BB16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D547F80-3F84-4033-A00A-C7ED37D0195F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D547F80-3F84-4033-A00A-C7ED37D0195F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D547F80-3F84-4033-A00A-C7ED37D0195F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D547F80-3F84-4033-A00A-C7ED37D0195F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -89,6 +96,7 @@ Global
 		{56A1B609-AACE-4B88-995E-7483D3C3F26D} = {93DF685D-8187-4E87-B7B6-2407B61D520C}
 		{DC970CB5-D338-440D-B496-73BEEB9C8918} = {9244D7FF-3C25-47CC-B7AC-07F150B3F210}
 		{33E11098-B0E7-4942-96DF-0E509CC5BB16} = {9244D7FF-3C25-47CC-B7AC-07F150B3F210}
+		{1D547F80-3F84-4033-A00A-C7ED37D0195F} = {93DF685D-8187-4E87-B7B6-2407B61D520C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {52921DCD-4695-4E70-B3D8-16D65EC886FF}

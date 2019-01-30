@@ -1,0 +1,413 @@
+﻿import consoleDll from "System.Console, Version=4.1.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a";
+import runtimeExtsDll from "System.Runtime.Extensions, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a";
+import coreLibDll from "System.Private.CoreLib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e";
+var Console=consoleDll.System.Console;
+var ConsoleColor=consoleDll.System.ConsoleColor;
+var ConsoleKey=consoleDll.System.ConsoleKey;
+var Random=runtimeExtsDll.System.Random;
+var List=runtimeExtsDll.System.Collections.ArrayList;
+var Timer=coreLibDll.System.Threading.Timer;
+var TimerCallback=coreLibDll.System.Threading.TimerCallback;
+var Timeout=coreLibDll.System.Threading.Timeout;
+var StringBuilder=coreLibDll.System.Text.StringBuilder;
+
+var os=runtimeExtsDll.System.Environment.OSVersion.Platform;
+var PlatformID=runtimeExtsDll.System.PlatformID;
+//var isWinNt=os == PlatformID.Win32NT;
+var isWinNt=false;
+
+var _life;
+var _engine;
+var _timer;
+var _rand = new Random();
+
+function Size2D(w,h)
+{
+	this.W=w;
+	this.H=h;
+}
+
+function Point2D(x,y)
+{
+	this.X=x;
+	this.Y=y;
+	this.Move=function(shift) {
+		this.X+=shift.X;
+		this.Y+=shift.Y;
+	};
+}
+
+function Cell(x,y,chr,foreColor)
+{
+	this.Coords = new Point2D(x, y);
+	this.Char = chr;
+	this.ForeColor = foreColor;
+}
+
+var BodyHelper={
+	BodyFromString:function(body, color) {
+		var result=new List();
+		var pos = new Point2D(0, 0);
+		for (var chInd=0;chInd<body.length;chInd++)
+		{
+			var ch=body[chInd];
+			if (ch==' ')
+				pos.X++;
+			else if (ch=='\r')
+				pos.X=0;
+			else if (ch=='\n')
+				pos.Y++;
+			else
+			{
+				result.Add(new Cell(pos.X,pos.Y,ch,color));
+				pos.X++;
+			}
+		}
+		return result;
+	},
+
+	Colorize:function (body,color) {
+		var result = new List();
+		//result.AddRange(body.Select(cell => new Cell(cell.Coords.X, cell.Coords.Y, cell.Char, color)));
+		for (var a=0;a<body.Count;a++)
+		{
+			var cell=body[a];
+			result.Add(new Cell(cell.Coords.X, cell.Coords.Y, cell.Char, color));
+		}
+		return result;
+	}
+};
+
+var Fish01Static={
+BodyDirRight:BodyHelper.BodyFromString(`     \\
+  --- ----
+ /        \\
+>     >>   >
+ \\_____ __/
+       /`),
+BodyDirLeft:BodyHelper.BodyFromString(`      /
+  ---- ---
+ /        \\
+<   <<     <
+ \\__ _____/
+    \\`),
+Width:11
+};
+
+function Fish01(goFromLeft, speed, foreColor)
+{
+	this._move=new Point2D((goFromLeft ? 1 : -1) * speed, 0);
+	this._body=BodyHelper.Colorize((goFromLeft ? Fish01Static.BodyDirRight : Fish01Static.BodyDirLeft),foreColor);
+
+	this.Animate=function(){return _move};
+	this.GetBody=function(){return _body};
+}
+
+function Genesis(playgroundSize)
+{
+	function createFish()
+	{
+		var goRight = _rand.Next(2) == 1;
+		return { Coords : new Point2D(goRight ? -1 * Fish01Static.Width : playgroundSize.W - 1, _rand.Next(5, playgroundSize.H - (6 + 5))), ZIndex : _rand.Next(5), Object : new Fish01(goRight, _rand.Next(4) / 2 + 1, _rand.Next(16)) };
+	}
+
+	this.Creator=createFish;
+}
+
+function World(creatureCount,creator)
+{
+	this._objects=new List();
+	this._toRemove=new List();
+
+	this.AddObject=function(obj)
+	{
+		var zIndex = obj.ZIndex;
+		var refInd=-1;
+		for (var a=0;a<_objects.length;a++)
+			if (_objects[a].ZIndex >= zIndex)
+			{
+				refInd=a;
+				break;
+			}
+		if (refInd == -1)
+			_objects.Add(obj);
+		else
+			_objects.Insert(refInd, obj);
+	};
+
+	this.RemoveObject=function(obj)
+	{
+		_toRemove.Add(obj);
+	};
+
+	this.Animate=function()
+	{
+		var toCreateCount = _toRemove.length;
+		for (var a=0;a<toCreateCount;a++)
+			_objects.Remove(_toRemove[a]);
+		_toRemove.Clear();
+
+		for (var a=0;a<toCreateCount;a++)
+			this.AddObject(creator());
+
+		for (var a=0;a<_objects.length;a++)
+		{
+			var obj=_objects[a];
+			obj.Coords.Move(obj.Object.Animate());
+		}
+	};
+
+	for (var a = 0; a < creatureCount; a++)
+		this.AddObject(creator());
+}
+
+var FrameStatic={Empty:new List()};
+
+function Transition()
+{
+	this._objects=new List();
+	this.Invoke=function() {
+		ConsoleColor lastColor = ConsoleColor.DarkBlue;
+
+		for (var a=0;a<this._objects.Count;a++)
+		{
+			var cell=this._objects[a];
+			ConsoleColor cellColor = cell.ForeColor;
+			if (lastColor != cellColor)
+			{
+				lastColor = cellColor;
+				Console.ForegroundColor = lastColor;
+			}
+
+			Console.SetCursorPosition(cell.Coords.X, cell.Coords.Y);
+			Console.Write(cell.Char);
+		}
+	}
+}
+
+function FindIndex(enumerable,checkFunc)
+{
+	for (var a=0;a<enumerable.length;a++)
+		if (checkFunc(enumerable[a]))
+			return a;
+	return -1;
+}
+
+function FirstOrDefault(enumerable,checkFunc,def)
+{
+	for (var a=0;a<enumerable.length;a++)
+	{
+		var val=enumerable[a];
+		if (checkFunc(val))
+			return val;
+	}
+	return def;
+}
+
+function RendererWin(playgroundSize, backColor)
+{
+	this._objects = new List();
+
+	Console.BackgroundColor = backColor;
+	Console.Clear();
+	Console.CursorVisible = false;
+	Console.SetWindowSize(playgroundSize.W, playgroundSize.H);
+
+	this.CalculateObjectsInView=function(objects,removeAction) {
+		_objects.Clear();
+		for (var a=0;a<objects.length;a++)
+		{
+			var obj=objects[a];
+			var viewBody = CalculateBodyInView(obj);
+			if (viewBody.Count == 0)
+				removeAction(obj);
+			else
+				_objects.Add(viewBody);
+		}
+	};
+
+	this.CalculateBodyInView=function(obj) {
+		var result = new List();
+		var zero = obj.Coords;
+		var body=obj.Object.GetBody();
+		for (var a=0;a<body.length;a++)
+		{
+			var cell=body[a];
+			var x = zero.X + cell.Coords.X;
+			if ((x > -1) && (x < playgroundSize.W))
+			{
+				var y = zero.Y + cell.Coords.Y;
+				if ((y > -1) && (y < playgroundSize.H))
+					result.Add(new Cell(x, y, cell.Char, cell.ForeColor));
+			}
+		}
+		return result;
+	};
+
+	this._lastFrame = FrameStatic.Empty;
+	this.Render=function() {
+		var newFrame=this.GetCurrentFrame();
+		CreateTransition(_lastFrame, newFrame, Console.BackgroundColor)
+			.Invoke();
+		_lastFrame = newFrame;
+	};
+
+	this.GetCurrentFrame=function() {
+		var result = new List();
+		for (var a=0;a<_objects.length;a++)
+		{
+			var obj=_objects[a];
+			for (var b=0;b<obj.length;b++)
+			{
+				var cell=obj[b];
+				//var behindIndex = result.FindIndex(function(x){return x.Coords.Equals(cell.Coords);});
+				var behindIndex = FindIndex(result,function(x){return x.Coords.X==cell.Coords.X && x.Coords.Y==cell.Coords.Y;});
+				if (behindIndex != -1)
+					result.RemoveAt(behindIndex);
+				result.Add(cell);
+			}
+		}
+		/*result.Sort(function(x,y){
+			int compY = x.Coords.Y.CompareTo(y.Coords.Y);
+			return compY == 0 ? x.Coords.X.CompareTo(y.Coords.X) : compY;
+		});*/
+		return result;
+	};
+
+	this.CreateTransition=function(oldFrame, newFrame, backColor) {
+		var result = new Transition();
+		for (var y = 0; y < playgroundSize.H; y++)
+			for (var x = 0; x < playgroundSize.W; x++)
+			{
+				var oldCell = FirstOrDefault(oldFrame,function(cell) {return cell.Coords.X==x && cell.Coords.Y==y;},null);
+				var newCell = FirstOrDefault(newFrame,function(cell) {return cell.Coords.X==x && cell.Coords.Y==y;},null);
+
+				if (newCell == null)
+				{
+					if (oldCell!=null)
+						result._objects.Add(new Cell(x, y, ' ', backColor));
+				}
+				else
+					if ((oldCell==null)||(oldCell.ForeColor!=newCell.ForeColor)||(oldCell.Char!=newCell.Char))
+						result._objects.Add(newCell);
+			}
+		return result;
+	};
+}
+
+function RendererUnix(playgroundSize, backColor)
+{
+	this._objects = new List();
+
+	Console.Clear();
+	Console.CursorVisible = false;
+
+	this.CalculateObjectsInView=function(objects,removeAction) {
+		_objects.Clear();
+		for (var a=0;a<objects.Count;a++)
+		{
+			var obj=objects[a];
+			var viewBody = CalculateBodyInView(obj);
+			if (viewBody.Count == 0)
+				removeAction(obj);
+			else
+				_objects.Add(viewBody);
+		}
+	};
+
+	this.CalculateBodyInView=function(obj) {
+		var result = new List();
+		var zero = obj.Coords;
+		var body=obj.Object.GetBody();
+		for (var a=0;a<body.Count;a++)
+		{
+			var cell=body[a];
+			var x = zero.X + cell.Coords.X;
+			if ((x > -1) && (x < playgroundSize.W))
+			{
+				var y = zero.Y + cell.Coords.Y;
+				if ((y > -1) && (y < playgroundSize.H))
+					result.Add(new Cell(x, y, cell.Char, cell.ForeColor));
+			}
+		}
+		return result;
+	};
+
+	this.GetCurrentFrame=function() {
+		var result = [];
+		for (var a=0;a<_objects.length;a++)
+		{
+			var obj=_objects[a];
+			for (var b=0;b<obj.length;b++)
+			{
+				var cell=obj[b];
+				//int behindIndex = result.FindIndex(x => x.Coords.Equals(cell.Coords));
+				var behindIndex = FindIndex(result,function(x){return x.Coords.X==cell.Coords.X && x.Coords.Y==cell.Coords.Y;});
+				if (behindIndex == -1)
+					result.push(cell);
+				else
+					result[behindIndex]=cell;
+			}
+		}
+		result.sort(function(x, y) {
+			var compY = x.Coords.Y.CompareTo(y.Coords.Y);
+			return compY == 0 ? x.Coords.X.CompareTo(y.Coords.X) : compY;
+		});
+		return result;
+	};
+
+	this.Render=function() {
+		var newFrame = GetCurrentFrame();
+
+		var content;
+		if (newFrame.length!=0)
+		{
+			var lastCell = newFrame[newFrame.length - 1];
+			if ((lastCell.Coords.X < playgroundSize.W) || (lastCell.Coords.Y < playgroundSize.H))
+				newFrame.push(new Cell(playgroundSize.W - 1, playgroundSize.H - 1, ' ', lastCell.ForeColor == ConsoleColor.Black ? ConsoleColor.White : ConsoleColor.Black));
+
+			StringBuilder sb = new StringBuilder();
+			var lastIndex = 0;
+			var lastCoords = new Point2D(0, 0);
+			for (var a=0;a<newFrame.length;a++)
+			{
+				var cell=newFrame[a];
+				var ind = cell.Coords.Y * playgroundSize.W + cell.Coords.X;
+				sb.Append(' ', ind - lastIndex);
+				sb.Append(cell.Char);
+				lastIndex = ind+1;
+			}
+			content=sb.ToString();
+		}
+		Console.Clear();
+		if (content!=null)
+			Console.Write(content);
+	};
+}
+
+function TimerTick(state)
+{
+	_life.Animate();
+	_engine.CalculateObjectsInView(_life._objects, function(x) { _life.RemoveObject(x);});
+	_engine.Render();
+	_timer.Change(250, Timeout.Infinite);
+}
+
+function ProgramMain()
+{
+	var playgroundSize = isWinNt ? new Size2D(80,40) : new Size2D(Console.WindowWidth, Console.WindowHeight);
+
+	var g=new Genesis(playgroundSize);
+	_life=new World(2, g.Creator);
+
+	_engine = isWinNt ? new RendererWin(playgroundSize, ConsoleColor.DarkBlue) : new RendererUnix(playgroundSize, ConsoleColor.DarkBlue);
+
+	_timer = new Timer(new TimerCallback(TimerTick),null,250,Timeout.Infinite);
+
+	var cki;
+	while (!(((cki = Console.ReadKey()).Key == ConsoleKey.Escape) || (cki.Key == ConsoleKey.Enter))) ;
+	Console.ResetColor();
+	Console.Clear();
+}
+
+ProgramMain();

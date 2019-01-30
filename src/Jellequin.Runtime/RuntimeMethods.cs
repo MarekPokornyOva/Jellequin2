@@ -17,16 +17,16 @@ namespace Jellequin.Runtime
 #endif*/
 	public static class RuntimeMethods
 	{
-		internal static Type _objectType=typeof(object);
+		#region fields/props/ctors
+		internal readonly static Type _objectType=typeof(object);
 
-		#region fields/ctors
 		static RuntimeMethods()
 		{
 			RuntimeMethodsExtender = new NullRuntimeMethodsExtender();
 		}
 
 		public static IRuntimeMethodsExtender RuntimeMethodsExtender { get; set; }
-		#endregion fields/ctors
+		#endregion fields/props/ctors
 
 		#region math op,BitwiseAnd,BitwiseOr,BitwiseNot,ShiftRight,ShiftLeft,Equals,EqualsStrictly,Compare,Debug,EvalToBool,Not
 		public static object Add(object x, object y)
@@ -1790,11 +1790,10 @@ namespace Jellequin.Runtime
 		internal static readonly Type _typeType = typeof(Type);
 		static int GetMemberInternal(object objectVar, string memberName, out object resultObject, out MemberInfo mi, out object objectVarWrap, out Type objectVarType)
 		{
-			if (objectVar is ExternalLibraryObject)
+			if (objectVar is ExternalLibraryObject elo)
 			{
-				ExternalLibraryObject elo = ((ExternalLibraryObject)objectVar);
-				if (objectVar is NamespaceObject)
-					memberName = ((NamespaceObject)objectVar)._name + "." + memberName;
+				if (objectVar is NamespaceObject nsO)
+					memberName=nsO._name + "." + memberName;
 				Type t = elo._assembly.GetType(memberName);
 				resultObject= t == null ? (object)new NamespaceObject() { _assembly = elo._assembly, _name = memberName } : (object)new StaticObject() { Type = t };
 				mi = null;
@@ -1831,9 +1830,15 @@ namespace Jellequin.Runtime
 			}
 			else
 			{
-				objectVarWrap = GetJsWrapper(objectVar);
-				objectVarType = objectVarWrap.GetType();
-				mis = objectVarType.GetMember(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
+				objectVarWrap=objectVar;
+				objectVarType=objectVarWrap.GetType();
+				mis=objectVarType.GetMember(memberName,BindingFlags.Public|BindingFlags.Instance|BindingFlags.Static);
+				if (mis.Length==0)
+				{
+					objectVarWrap=GetJsWrapper(objectVar);
+					objectVarType=objectVarWrap.GetType();
+					mis=objectVarType.GetMember(memberName,BindingFlags.Public|BindingFlags.Instance|BindingFlags.Static);
+				}
 			}
 
 			resultObject=null;
@@ -1848,9 +1853,13 @@ namespace Jellequin.Runtime
 
 		public static object GetMember(object objectVar, string memberName)
 		{
-			IJsObject jsObject = objectVar as IJsObject;
-			if (jsObject != null)
-				return jsObject.GetValue(memberName);
+			if (objectVar==null)
+				throw new NullReferenceException();
+
+			if (objectVar is IJsObject jsObject)
+				//return jsObject.GetValue(memberName);
+				if (jsObject.HasMember(memberName))
+					return jsObject.GetValue(memberName);
 
 			switch (GetMemberInternal(objectVar, memberName, out object resultObject, out MemberInfo mmi, out object objectVarWrap, out Type objectVarType))
 			{
@@ -1885,8 +1894,7 @@ namespace Jellequin.Runtime
 		static Dictionary<MemberInfo, DynamicMethod> _createGetMethodCache = new Dictionary<MemberInfo, DynamicMethod>();
 		private static DynamicMethod CreateGetMethod(MemberInfo member)
 		{
-			DynamicMethod result;
-			if (_createGetMethodCache.TryGetValue(member, out result))
+			if (_createGetMethodCache.TryGetValue(member, out DynamicMethod result))
 				return result;
 
 			PropertyInfo pi = member as PropertyInfo;
@@ -1911,10 +1919,24 @@ namespace Jellequin.Runtime
 			if (isProp)
 			{
 				MethodInfo mei = pi.GetGetMethod();
-				gen.Emit(instanceHolder && mei.IsVirtual ? OpCodes.Callvirt : OpCodes.Call, mei);
+				gen.Emit(instanceHolder&&mei.IsVirtual ? OpCodes.Callvirt : OpCodes.Call,mei);
 			}
 			else
-				gen.Emit(instanceHolder ? OpCodes.Ldfld : OpCodes.Ldsfld, fi);
+				if ((fi.IsLiteral)&&(!instanceHolder))
+				{
+					object val=fi.GetRawConstantValue();
+
+					if (memberType==typeof(int))
+						gen.Emit(OpCodes.Ldc_I4,(int)val);
+					else if (memberType==typeof(double))
+						gen.Emit(OpCodes.Ldc_R8,(double)val);
+					else if (memberType==typeof(bool))
+						gen.Emit((bool)val ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+					else
+						throw new RuntimeException(RuntimeExceptionReason.Unsupported);
+				}
+				else
+					gen.Emit(instanceHolder ? OpCodes.Ldfld : OpCodes.Ldsfld,fi);
 			if (memberType.IsValueType)
 				gen.Emit(OpCodes.Box, memberType);
 			gen.Emit(OpCodes.Ret);
@@ -1931,6 +1953,9 @@ namespace Jellequin.Runtime
 		#region SetMember
 		public static void SetMember(object objectVar, string memberName, object value)
 		{
+			if (objectVar==null)
+				throw new NullReferenceException();
+
 			IJsObject jsObject = objectVar as DynamicJsObject;
 			if (jsObject!=null)
 			{
@@ -1970,14 +1995,13 @@ namespace Jellequin.Runtime
 		}
 
 		#region CreateSetMethod/WithTarget
-		static Type[] _createSetMethodArgs = new Type[] { _objectType, _objectType };
-		static MethodInfo _converter = typeof(Convert).GetMethod("ChangeType", BindingFlags.Public | BindingFlags.Static, null, new Type[] { _objectType, _typeType }, null);
-		static MethodInfo _getTypeFromHandle = _typeType.GetMethod("GetTypeFromHandle");
-		static Dictionary<MemberInfo, DynamicMethod> _createSetMethodCache = new Dictionary<MemberInfo, DynamicMethod>();
+		readonly static Type[] _createSetMethodArgs = new Type[] { _objectType, _objectType };
+		readonly static MethodInfo _converter = typeof(Convert).GetMethod(nameof(Convert.ChangeType), BindingFlags.Public | BindingFlags.Static, null, new Type[] { _objectType, _typeType }, null);
+		readonly static MethodInfo _getTypeFromHandle = _typeType.GetMethod(nameof(Type.GetTypeFromHandle));
+		readonly static Dictionary<MemberInfo, DynamicMethod> _createSetMethodCache = new Dictionary<MemberInfo, DynamicMethod>();
 		private static DynamicMethod CreateSetMethod(MemberInfo member)
 		{
-			DynamicMethod result;
-			if (_createSetMethodCache.TryGetValue(member, out result))
+			if (_createSetMethodCache.TryGetValue(member, out DynamicMethod result))
 				return result;
 
 			PropertyInfo pi = member as PropertyInfo;
@@ -2002,7 +2026,7 @@ namespace Jellequin.Runtime
 			gen.Emit(OpCodes.Ldarg_1);
 			if (memberType.IsValueType)
 			{
-				gen.Emit(OpCodes.Ldtoken, memberType);
+				gen.Emit(OpCodes.Ldtoken,memberType.IsEnum?typeof(int):memberType);
 				gen.Emit(OpCodes.Call, _getTypeFromHandle);
 				gen.Emit(OpCodes.Call, _converter);
 				gen.Emit(OpCodes.Unbox_Any, memberType);
@@ -2031,11 +2055,7 @@ namespace Jellequin.Runtime
 		#region HasMember
 		public static bool HasMember(object objectVar, string memberName)
 		{
-			object resultObject;
-			MemberInfo mmi;
-			object objectVarWrap;
-			Type objectVarType;
-			switch (GetMemberInternal(objectVar, memberName, out resultObject, out mmi, out objectVarWrap, out objectVarType))
+			switch (GetMemberInternal(objectVar, memberName, out object resultObject, out MemberInfo mmi, out object objectVarWrap, out Type objectVarType))
 			{
 				case 0:
 					return false;
@@ -2051,10 +2071,9 @@ namespace Jellequin.Runtime
 		#region DeleteMember
 		public static void DeleteMember(object instance, string memberName)
 		{
-			IJsObject jsInstance = instance as IJsObject;
-			if (jsInstance==null)
-				throw new RuntimeException(RuntimeExceptionReason.DeleteOnStaticObject);
-			jsInstance.DeleteMember(memberName);
+			if (instance is IJsObject jsInstance)
+				jsInstance.DeleteMember(memberName);
+			throw new RuntimeException(RuntimeExceptionReason.DeleteOnStaticObject);
 		}
 		#endregion DeleteMember
 
@@ -2065,16 +2084,13 @@ namespace Jellequin.Runtime
 			Assembly asm = null;
 			FieldInfo fi;
 			if ((fi = inst.GetType().GetField("~externalLibraryResolver", BindingFlags.NonPublic | BindingFlags.Instance)) != null)
-			{
-				Action<ResolveExternalLibraryEventArgs> externalLibraryResolver = fi.GetValue(inst) as Action<ResolveExternalLibraryEventArgs>;
-				if (externalLibraryResolver != null)
+				if (fi.GetValue(inst) is Action<ResolveExternalLibraryEventArgs> externalLibraryResolver)
 				{
 					ResolveExternalLibraryEventArgs args = new ResolveExternalLibraryEventArgs() { LibraryName = alias, Predefinition = predefinition };
 					externalLibraryResolver(args);
 					object library = args.Assembly;
 					asm = library is string ? Assembly.LoadFrom((string)library) : library as Assembly;
 				}
-			}
 			if (asm == null)
 				throw new RuntimeException(RuntimeExceptionReason.CantResolveLibrary, new object[] { alias, predefinition });
 			return new ExternalLibraryObject() { _assembly = asm };
@@ -2095,11 +2111,12 @@ namespace Jellequin.Runtime
 		#region GetArrayItem/SetArrayItem
 		public static object GetArrayItem(object array, object index)
 		{
-			if (array is ArrayObject)
-				return ((ArrayObject)array).GetItem(index);
+			if (array is ArrayObject ao)
+				return ao.GetItem(index);
+			if ((array is string s) && (index is int indexInt))
+				return s[indexInt];
 
-			object result;
-			if (RuntimeMethodsExtender.ArrayGetItem(array, index, out result))
+			if (RuntimeMethodsExtender.ArrayGetItem(array, index, out object result))
 				return result;
 
 			Type arrayType = array.GetType();
@@ -2116,8 +2133,7 @@ namespace Jellequin.Runtime
 				foreach (PropertyInfo item in pis)
 				{
 					Type t = item.GetIndexParameters()[0].ParameterType;
-					MethodInfo indexConvertMethod;
-					if (TypeConverter.GetConvertMethod(indexType, t, out indexConvertMethod))
+					if (TypeConverter.GetConvertMethod(indexType, t, out MethodInfo indexConvertMethod))
 					{
 						Func<object, object, object> res = (Func<object, object, object>)CreateGetMethodWithIndex(item, indexType, indexConvertMethod).CreateDelegate(typeof(Func<object, object, object>));
 						return res(array, index);
@@ -2132,8 +2148,7 @@ namespace Jellequin.Runtime
 			if (array is ArrayObject)
 				return ((ArrayObject)array).HasItem(index);
 
-			bool result;
-			if (RuntimeMethodsExtender.ArrayHasItem(array, index, out result))
+			if (RuntimeMethodsExtender.ArrayHasItem(array, index, out bool result))
 				return result;
 
 			Type arrayType = array.GetType();
@@ -2149,8 +2164,7 @@ namespace Jellequin.Runtime
 			if (array is ArrayObject)
 				return ((ArrayObject)array).DeleteItem(index);
 
-			bool result;
-			if (RuntimeMethodsExtender.ArrayDeleteItem(array, index, out result))
+			if (RuntimeMethodsExtender.ArrayDeleteItem(array, index, out bool result))
 				return result;
 
 			Type arrayType = array.GetType();
@@ -2174,11 +2188,10 @@ namespace Jellequin.Runtime
 
 		#region CreateGetMethodWithIndex
 		//http://jachman.wordpress.com/2006/08/22/2000-faster-using-dynamic-method-calls/
-		static Type[] _createGetMethodArgsWithIndex = new Type[] { _objectType, _objectType };
+		readonly static Type[] _createGetMethodArgsWithIndex = new Type[] { _objectType, _objectType };
 		private static DynamicMethod CreateGetMethodWithIndex(PropertyInfo member, Type indexType, MethodInfo indexConvertMethod)
 		{
-			DynamicMethod result;
-			if (_createGetMethodCache.TryGetValue(member, out result))
+			if (_createGetMethodCache.TryGetValue(member, out DynamicMethod result))
 				return result;
 
 			PropertyInfo pi = member;
@@ -2253,12 +2266,11 @@ namespace Jellequin.Runtime
 		#endregion GetJsWrapper
 
 		#region GetFuncType
-		static Dictionary<int,Type> _getFuncTypeCache=new Dictionary<int,Type>();
-		static string _thisAsmFullName=typeof(Func<>).Assembly.FullName;
+		readonly static Dictionary<int,Type> _getFuncTypeCache=new Dictionary<int,Type>();
+		readonly static string _thisAsmFullName=typeof(Func<>).Assembly.FullName;
 		public static Type GetFuncType(int parmsCount)
 		{
-			Type result;
-			if (!_getFuncTypeCache.TryGetValue(parmsCount, out result))
+			if (!_getFuncTypeCache.TryGetValue(parmsCount, out Type result))
 			{
 				StringBuilder sb = new StringBuilder("System.Func`").Append(parmsCount + 1).Append('[');
 				sb.Insert(sb.Length, "[System.Object],", parmsCount);
@@ -2336,9 +2348,7 @@ namespace Jellequin.Runtime
 				if ((targetType == valueType) || (targetType.IsAssignableFrom(valueType)))
 					return true;
 
-				Dictionary<Type, MethodInfo> part;
-				MethodInfo mi;
-				if ((!_convertMethods.TryGetValue(targetType, out part)) || (!part.TryGetValue(valueType, out mi)))
+				if ((!_convertMethods.TryGetValue(targetType, out Dictionary<Type,MethodInfo> part)) || (!part.TryGetValue(valueType, out MethodInfo mi)))
 					return false;
 
 				value = mi.Invoke(null, new object[] { value });
@@ -2350,8 +2360,7 @@ namespace Jellequin.Runtime
 				result = null;
 				if ((targetType == sourceType) || (targetType.IsAssignableFrom(sourceType)))
 					return true;
-				Dictionary<Type, MethodInfo> part;
-				return ((_convertMethods.TryGetValue(targetType, out part)) && (part.TryGetValue(sourceType, out result)));
+				return ((_convertMethods.TryGetValue(targetType, out Dictionary<Type,MethodInfo> part)) && (part.TryGetValue(sourceType, out result)));
 			}
 
 			static Dictionary<Type, Dictionary<Type, MethodInfo>> _convertMethods = new Dictionary<Type, Dictionary<Type, MethodInfo>>();
@@ -2374,8 +2383,7 @@ namespace Jellequin.Runtime
 					if (type1 == type2)
 						continue;
 
-					Dictionary<Type, MethodInfo> part;
-					if (!_convertMethods.TryGetValue(type1, out part))
+					if (!_convertMethods.TryGetValue(type1, out Dictionary<Type,MethodInfo> part))
 					{
 						part = new Dictionary<Type, MethodInfo>();
 						_convertMethods.Add(type1, part);
@@ -2432,11 +2440,23 @@ namespace Jellequin.Runtime
 			if (type is StaticObject so)
 			{
 				int argsLength = args.Length;
-				ConstructorInfo ci=so.Type.GetConstructors(BindingFlags.Public|BindingFlags.Instance).FirstOrDefault(x => x.GetParameters().Length == argsLength);
-				if (ci == null)
+				Type typeReal=so.Type;
+				ConstructorInfo ci=FindMethod(typeReal.GetConstructors(BindingFlags.Public|BindingFlags.Instance).Select(x=>(x,x.GetParameters())).ToArray(),args);
+				if (ci==null)
+				{
+					if ((typeof(MulticastDelegate).IsAssignableFrom(typeReal)) && (argsLength>0) && (args[0] is IJsFunction jsFunc))
+					{
+						ci = typeReal.GetConstructors(BindingFlags.Public|BindingFlags.Instance).FirstOrDefault(x => x.GetParameters().Length==2);
+						return ci.DirectInvoke(new object[] { jsFunc,jsFunc.GetType().GetMethod(nameof(IJsFunction.Invoke)).MethodHandle.GetFunctionPointer() });
+					}
+
 					throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod);
+				}
 				return ci.DirectInvoke(args);
 			}
+
+			if (type is IJsFunction jsFun)
+				return jsFun.Instantiate(args);
 
 			//throw new NotImplementedException();
 			throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod);
@@ -2577,14 +2597,50 @@ namespace Jellequin.Runtime
 					return null;
 				}
 				else
-					//throw new NotImplementedException();
 					throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod);
 			}
 
-			//throw new NotImplementedException();
 			throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod);
 		}
 		#endregion dynam call
+
+		#region FindMethod
+		internal static T FindMethod<T>(IEnumerable<(T Method, ParameterInfo[] Parameters)> methods,object[] arguments) where T : class
+		{
+			int argsCount = arguments.Length;
+			Type[] valTypes = arguments.Select(x => x?.GetType()).ToArray();
+			IEnumerable<(T Method, ParameterInfo[] Parameters)> baseQuery=methods.Where(x => x.Parameters.Length==argsCount);
+			if (argsCount==0)
+			{
+				(T Method, ParameterInfo[] Parameters) res=baseQuery.FirstOrDefault();
+				return res.Equals(default((T Method, ParameterInfo[] Parameters))) ? null : res.Method;
+			}
+			return baseQuery
+				.Select(x =>
+				{
+					int score = 0;
+					int a = 0;
+					foreach (ParameterInfo pi in x.Parameters)
+					{
+						Type parmType = pi.ParameterType;
+						Type valType = valTypes[a++];
+
+						if (valType==null&&parmType.IsClass) //null can be assigned to class -> 2 points
+							score+=2;
+						else if (parmType.Equals(valType)) //same parm type gets 2 points
+							score+=2;
+						else if (parmType.IsAssignableFrom(valType)) //compatible parm type gets 2 points
+							score+=2;
+						else if (TypeConverter.GetConvertMethod(valType,parmType,out MethodInfo indexConvertMethod)) //convertible parm type gets 1 points
+							score+=1;
+					}
+
+					return new { x.Method,Score = score };
+				})
+				.Where(x => x.Score>=argsCount)
+				.OrderByDescending(x => x.Score).FirstOrDefault()?.Method;
+		}
+		#endregion FindMethod
 	}
 
 	#region DynamDelCalls
@@ -2593,11 +2649,11 @@ namespace Jellequin.Runtime
 	#endif*/
 	public static class DynamDelCalls
 	{
-		static MethodInfo _translateTypeMi = typeof(DynamDelCalls).GetMethod("TranslateType", BindingFlags.Public|BindingFlags.Static);
-		static Type _typeType = typeof(Type);
-		static MethodInfo _getTypeFromHandle = _typeType.GetMethod("GetTypeFromHandle");
-		static Type _objectType = typeof(object);
-		static Type _objectArrayType = typeof(object[]);
+		readonly static MethodInfo _translateTypeMi = typeof(DynamDelCalls).GetMethod(nameof(DynamDelCalls.TranslateType), BindingFlags.Public|BindingFlags.Static);
+		readonly static Type _typeType = typeof(Type);
+		readonly static MethodInfo _getTypeFromHandle = _typeType.GetMethod(nameof(Type.GetTypeFromHandle));
+		readonly static Type _objectType = typeof(object);
+		readonly static Type _objectArrayType = typeof(object[]);
 
 		//#if !DebugRuntime
 		[DebuggerHidden]
@@ -2629,7 +2685,7 @@ namespace Jellequin.Runtime
 				Label labElse = gen.DefineLabel();
 				Label labEnd = gen.DefineLabel();
 				gen.Emit(OpCodes.Ldarg_1);
-				gen.Emit(OpCodes.Call, typeof(Array).GetProperty("Length").GetMethod);
+				gen.Emit(OpCodes.Call, typeof(Array).GetProperty(nameof(Array.Length)).GetMethod);
 				gen.Emit(OpCodes.Ldc_I4, a + 1);
 				gen.Emit(OpCodes.Blt, labElse);
 
@@ -2689,6 +2745,12 @@ namespace Jellequin.Runtime
 			if (targetType.Equals(_objectType))
 				return value;
 
+			if (value==null)
+				return value;
+
+			if (targetType.IsAssignableFrom(value.GetType()))
+				return value;
+
 			/*if (value is Delegate del)
 				//return targetType.GetConstructors()[0].Invoke(new object[] { del.Target,del.Method.MethodHandle.GetFunctionPointer() });
 				return Delegate.CreateDelegate(targetType, del.Target, del.Method);*/
@@ -2700,7 +2762,7 @@ namespace Jellequin.Runtime
 		{
 			Type declaringType = ei.DeclaringType;
 			Type eventHandlerType = ei.EventHandlerType;
-			ParameterInfo[] eventHandlerTypeParms = eventHandlerType.GetMethod("Invoke").GetParameters();
+			ParameterInfo[] eventHandlerTypeParms = eventHandlerType.GetMethod(nameof(MethodInfo.Invoke)).GetParameters();
 			Type[] parmTypes = new Type[eventHandlerTypeParms.Length + 1];
 			parmTypes[0] = typeof(object);
 			int a = 0;
@@ -2719,7 +2781,7 @@ namespace Jellequin.Runtime
 			gen.Emit(OpCodes.Ldc_I4_1);
 			gen.Emit(OpCodes.Ldarg_2);
 			gen.Emit(OpCodes.Stelem_Ref);
-			gen.Emit(OpCodes.Call, handler.GetType().GetMethod("Invoke"));
+			gen.Emit(OpCodes.Call, handler.GetType().GetMethod(nameof(MethodInfo.Invoke)));
 			gen.Emit(OpCodes.Pop);
 			gen.Emit(OpCodes.Ret);
 
@@ -2756,11 +2818,9 @@ namespace Jellequin.Runtime
 		public object Invoke(object[] arguments)
 		{
 			int parmsCount = arguments.Length;
-			MethodInfo[] mis = Type.GetMethods(BindingFlags.Public|BindingFlags.Instance|BindingFlags.Static);
-			mis=Array.FindAll(mis, x => x.Name==MethodName&&x.GetParameters().Length==parmsCount);
-			MethodInfo mi = mis.Length==1
-				? mi=mis[0]
-				: mi=Array.Find(mis, item => !(Array.Exists(item.GetParameters(), item2 => item2.ParameterType!=RuntimeMethods._objectType)));
+			MethodInfo mi = RuntimeMethods.FindMethod(Type.GetMethods(BindingFlags.Public|BindingFlags.Instance|BindingFlags.Static)
+				.Where(x=>(x.Name==MethodName)&&(!x.IsGenericMethodDefinition))
+				.Select(x=>(x,x.GetParameters())),arguments);
 			if (mi==null)
 				throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod, Type, MethodName, parmsCount);
 			return DynamDelCalls.DirectInvoke(mi, Target, arguments);
@@ -2801,21 +2861,20 @@ namespace Jellequin.Runtime
 #endif*/
 	public class JsError : Exception
 	{
-		Exception _ex;
-		int _number;
-		string _stackTrace;
+		readonly Exception _ex;
+		readonly int _number;
+		readonly string _stackTrace;
 
 		public JsError(Exception ex) : base(ex.Message, ex)
 		{
 			_ex = ex;
-			JsError jsError = ex as JsError;
-			if (jsError != null)
+			if (ex is JsError jsError)
 				this._number = jsError._number;
 		}
 
 		public JsError(object message)
 		{
-			_ex = new Exception((string)message) { Source = "Jellequin" };
+			_ex = new Exception((string)message) { Source = nameof(Jellequin) };
 			_stackTrace = new StackTrace(1).ToString();
 		}
 
@@ -2845,6 +2904,7 @@ namespace Jellequin.Runtime
 			get { return _stackTrace ?? _ex.StackTrace; }
 		}
 
+		#pragma warning disable IDE1006 //make the property compatible with JS
 		public string description
 		{
 			get { return this.Message; }
@@ -2854,6 +2914,7 @@ namespace Jellequin.Runtime
 		{
 			get { return this.Message; }
 		}
+		#pragma warning restore IDE1006
 	}
 	#endregion JsException
 
@@ -2884,21 +2945,23 @@ namespace Jellequin.Runtime
 				switch (Reason)
 				{
 					case RuntimeExceptionReason.Compare:
-						return "Can't compare values";
+						return "Can't compare values.";
 					case RuntimeExceptionReason.NoExternalVariable:
-						return string.Format("There is no external variable \"{0}\" declared", MessageData);
+						return string.Format("There is no external variable \"{0}\" declared.", MessageData);
 					case RuntimeExceptionReason.NoMemberOnExternalVariable:
-						return string.Format("There is no compatible member \"{1}\" on external variable \"{0}\"", MessageData);
+						return string.Format("There is no compatible member \"{1}\" on external variable \"{0}\".", MessageData);
 					case RuntimeExceptionReason.NoPropertyOnExternalVariable:
-						return string.Format("There is no compatible property \"{1}\" on external variable \"{0}\"", MessageData);
+						return string.Format("There is no compatible property \"{1}\" on external variable \"{0}\".", MessageData);
 					case RuntimeExceptionReason.UnknownArrayType:
-						return "Unknown array type - use extender";
+						return "Unknown array type - use extender.";
 					case RuntimeExceptionReason.NoCompatibleMethod:
-						return string.Format("There is no compatible method \"{1}\" with {2} object parameters", MessageData);
+						return string.Format("There is no compatible method \"{1}\" with {2} object parameters.", MessageData);
 					case RuntimeExceptionReason.CantResolveLibrary:
-						return string.Format("Can't resolve external library based on \"{1}\" definition", MessageData);
+						return string.Format("Can't resolve external library based on \"{1}\" definition.", MessageData);
 					case RuntimeExceptionReason.DeleteOnStaticObject:
-						return "Can't delete member on non-dynamic JS object";
+						return "Can't delete member on non-dynamic JS object.";
+					case RuntimeExceptionReason.Unsupported:
+						return "Unsupported feature.";
 					default:
 						return "Unknown error";
 				}
@@ -2906,7 +2969,7 @@ namespace Jellequin.Runtime
 		}
 	}
 
-	public enum RuntimeExceptionReason { Compare, NoExternalVariable, NoMemberOnExternalVariable, NoPropertyOnExternalVariable, UnknownArrayType, CantResolveLibrary, NoCompatibleMethod, DeleteOnStaticObject }
+	public enum RuntimeExceptionReason { Compare, NoExternalVariable, NoMemberOnExternalVariable, NoPropertyOnExternalVariable, UnknownArrayType, CantResolveLibrary, NoCompatibleMethod, DeleteOnStaticObject, Unsupported }
 	#endregion RuntimeException
 
 	#region IJsObject/IInvokable/IJsFunction
@@ -2922,7 +2985,7 @@ namespace Jellequin.Runtime
 	public interface IInvokable
 	{
 		object Invoke(object[] arguments);
-	}
+    }
 
 	#region IInvokableExtensions.ToFunc
 	public static class IInvokableExtensions
@@ -3139,7 +3202,9 @@ namespace Jellequin.Runtime
 	#endregion IInvokableExtensions.ToFunc
 
 	public interface IJsFunction:IJsObject,IInvokable
-	{ }
+	{
+        object Instantiate(object[] arguments);
+    }
 
 	public class ReflectionJsObject:IJsObject
 	{
@@ -3185,8 +3250,7 @@ namespace Jellequin.Runtime
 		Dictionary<string, object> _vals = new Dictionary<string, object>();
 		public virtual object GetValue(string name)
 		{
-			object res;
-			if (_vals.TryGetValue(name, out res))
+			if (_vals.TryGetValue(name, out object res))
 				return res;
 			IJsObject parScope = ParScope();
 			return ParScopeHasMember(parScope, name) ? parScope.GetValue(name) : null;

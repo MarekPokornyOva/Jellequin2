@@ -17,7 +17,7 @@ namespace Jellequin.Compiler
 	public class Compiler
 	{
 		#region public
-		static CodeSettings _parseSettings = new CodeSettings { ReorderScopeDeclarations=false, StripDebugStatements=false, LocalRenaming=LocalRenaming.KeepAll, PreserveFunctionNames=true, RemoveFunctionExpressionNames=false };
+		readonly static CodeSettings _parseSettings = new CodeSettings { ReorderScopeDeclarations=false, StripDebugStatements=false, LocalRenaming=LocalRenaming.KeepAll, PreserveFunctionNames=true, RemoveFunctionExpressionNames=false };
 		public static void Compile(ISource code, Stream assembly, AssemblyName assemblyName, CompilerOptions options)
 		{
 			Block block = new JSParser().Parse(code.GetText(), _parseSettings);
@@ -34,7 +34,7 @@ namespace Jellequin.Compiler
 		#region fields
 		ModuleBuilder _modBldr;
 		SymbolWriter _symbolWriter;
-		static Type _objectType = typeof(object);
+		readonly static Type _objectType = typeof(object);
 		bool _debug;
 		bool _useDynamicJsMembers;
 		Stack<FunctionInfo> _functions = new Stack<FunctionInfo>();
@@ -334,6 +334,7 @@ namespace Jellequin.Compiler
 			FunctionInfo funInfo = _functions.Peek();
 			ILGenerator gen = funInfo.Gen;
 			funInfo.Gen.Emit(ILOpCode.Ldarg_0);
+			funInfo.Gen.Emit(ILOpCode.Ldfld, funInfo.ThisField);
 			funInfo.Stack++;
 		}
 
@@ -384,8 +385,6 @@ namespace Jellequin.Compiler
 
 			if (node.OperatorToken==JSToken.Assign)
 			{
-				CallNode operAsCall;
-
 				if ((node.Operand1 is Lookup)||(node.Operand1 is Member))
 				{
 					PreSetVar(node.Operand1);
@@ -404,7 +403,7 @@ namespace Jellequin.Compiler
 						funInfo.Stack++;
 					}
 				}
-				else if (IsType(node.Operand1, out operAsCall))
+				else if (node.Operand1 is CallNode operAsCall)
 				{
 					CompileNode(operAsCall.Function);
 					AstNode argNode = operAsCall.Arguments[0];
@@ -481,35 +480,19 @@ namespace Jellequin.Compiler
 				CallRuntimeMethod(nameof(RuntimeMethods.Add));
 				funInfo.Stack--;
 			}
-			else if (node.OperatorToken==JSToken.PlusAssign)
+			else if ((node.OperatorToken==JSToken.PlusAssign)||(node.OperatorToken==JSToken.MinusAssign))
 			{
 				MarkSequencePoint(node);
 
 				PreSetVar(node.Operand1);
 				CompileNode(node.Operand1);
 				CompileNode(node.Operand2);
-				CallRuntimeMethod(nameof(RuntimeMethods.Add));
-				if (node.IsExpression)
+				CallRuntimeMethod(node.OperatorToken==JSToken.PlusAssign?nameof(RuntimeMethods.Add):nameof(RuntimeMethods.Sub));
+				/*if (node.IsExpression)
 				{
 					gen.Emit(ILOpCode.Dup);
 					funInfo.Stack++;
-				}
-				funInfo.Stack--;
-				SetVar(node.Operand1);
-			}
-			else if (node.OperatorToken==JSToken.MinusAssign)
-			{
-				MarkSequencePoint(node);
-
-				PreSetVar(node.Operand1);
-				CompileNode(node.Operand1);
-				CompileNode(node.Operand2);
-				CallRuntimeMethod(nameof(RuntimeMethods.Sub));
-				if (node.IsExpression)
-				{
-					gen.Emit(ILOpCode.Dup);
-					funInfo.Stack++;
-				}
+				}*/
 				funInfo.Stack--;
 				SetVar(node.Operand1);
 			}
@@ -733,24 +716,20 @@ namespace Jellequin.Compiler
 				Label lEnd = gen.DefineLabel();
 				LocalBuilder temp = gen.DeclareLocal(_objectType);
 
-				Lookup l;
-				Member m;
-				CallNode c;
-
-				if (IsType(node.Operand, out l))
+				if (node.Operand is Lookup l)
 				{
 					gen.Emit(ILOpCode.Ldarg_0);
 					gen.Emit(ILOpCode.Ldstr, l.Name);
 					gen.Emit(ILOpCode.Callvirt, GetRuntimeType(typeof(IJsObject)).GetMethod("HasMember"));
 					funInfo.Stack++;
 				}
-				else if (IsType(node.Operand, out m))
+				else if (node.Operand is Member m)
 				{
 					CompileNode(m.Root);
 					gen.Emit(ILOpCode.Ldstr, m.Name);
 					CallRuntimeMethod(nameof(RuntimeMethods.HasMember));
 				}
-				else if (IsType(node.Operand, out c)&&(c.InBrackets))
+				else if ((node.Operand is CallNode c)&&(c.InBrackets))
 				{
 					CompileNode(c.Function);
 					CompileNode(c.Arguments[0]);
@@ -838,8 +817,7 @@ namespace Jellequin.Compiler
 			gen.Emit(ILOpCode.Callvirt, typeof(System.Collections.IEnumerator).GetMethod("MoveNext"));
 			gen.Emit(ILOpCode.Brfalse, forEnd);
 			AstNode varName;
-			Var varDecl;
-			if (IsType(node.Variable, out varDecl))
+			if (node.Variable is Var varDecl)
 			{
 				CompileNode(varDecl);
 				varName=((VariableDeclaration)varDecl.Children.Single()).Binding;
@@ -939,8 +917,9 @@ namespace Jellequin.Compiler
 			AddDebuggerTypeProxyAttribute(typBldr);
 
 			FieldBuilder parScope = typBldr.DefineField("~~parScope", parType, FieldAttributes.Private);
+			FieldBuilder thisField = typBldr.DefineField("~~this", _objectType, FieldAttributes.Private);
 
-			MethodBuilder runMethod = typBldr.DefineMethod("~~Run", MethodAttributes.HideBySig|MethodAttributes.Assembly, _objectType, new IType[] { typeof(object[]) });
+            MethodBuilder runMethod = typBldr.DefineMethod("~~Run", MethodAttributes.HideBySig|MethodAttributes.Assembly, _objectType, new IType[] { typeof(object[]) });
 			runMethod.DefineParameter(1, ParameterAttributes.None, "arguments");
 			int parameterCount = node.ParameterDeclarations.Count;
 			string[] argNames = new string[parameterCount];
@@ -949,7 +928,7 @@ namespace Jellequin.Compiler
 				argNames[a]=((BindingIdentifier)((ParameterDeclaration)node.ParameterDeclarations[a]).Binding).Name;
 
 			ILGenerator gen = runMethod.GetILGenerator();
-			FunctionInfo funTypeChild = new FunctionInfo { TypBldr=typBldr, Gen=gen, EndLabel=gen.DefineLabel(), ResultValue=gen.DeclareLocal(_objectType), Args=new[] { "arguments" }, Parent=funInfoPar, ParentScopeField=parScope };
+			FunctionInfo funTypeChild = new FunctionInfo { TypBldr=typBldr, Gen=gen, EndLabel=gen.DefineLabel(), ResultValue=gen.DeclareLocal(_objectType), Args=new[] { "arguments" }, Parent=funInfoPar, ParentScopeField=parScope, ThisField=thisField };
 			_functions.Push(funTypeChild);
 
 			if (!_useDynamicJsMembers)
@@ -1003,13 +982,30 @@ namespace Jellequin.Compiler
 			gen.Emit(ILOpCode.Ret);
 			_functions.Pop();
 
-			ConstructorBuilder cb = typBldr.DefineConstructor(MethodAttributes.Assembly|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new IType[] { parType });
+			ConstructorBuilder cb = typBldr.DefineConstructor(MethodAttributes.Assembly|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new IType[] { parType, _objectType });
 			cb.DefineParameter(1, ParameterAttributes.None, "parScope");
+			cb.DefineParameter(2, ParameterAttributes.None, "this");
 			GenerateConstructorBaseCall(cb);
 			gen=cb.GetILGenerator();
+			//this.~~parScope = parScope;
 			gen.Emit(ILOpCode.Ldarg_0);
 			gen.Emit(ILOpCode.Ldarg_1);
 			gen.Emit(ILOpCode.Stfld, parScope);
+			//this.~~this = @this == null ? this : @this;
+			Label thisIsNotNull = gen.DefineLabel();
+			Label thisIsNotNullEnd = gen.DefineLabel();
+			gen.Emit(ILOpCode.Ldarg_0);
+			gen.Emit(ILOpCode.Ldarg_2);
+			gen.Emit(ILOpCode.Ldnull);
+			gen.Emit(ILOpCode.Ceq);
+			gen.Emit(ILOpCode.Brtrue_s, thisIsNotNull);
+			gen.Emit(ILOpCode.Ldarg_2);
+			gen.Emit(ILOpCode.Br_s, thisIsNotNullEnd);
+			gen.MarkLabel(thisIsNotNull);
+			gen.Emit(ILOpCode.Ldarg_0);
+			gen.MarkLabel(thisIsNotNullEnd);
+			gen.Emit(ILOpCode.Stfld, thisField);
+			//ret
 			gen.Emit(ILOpCode.Ret);
 
 			typBldr.CreateType();
@@ -1020,9 +1016,10 @@ namespace Jellequin.Compiler
 			MethodBuilder runMethodToInvoke = runMethod;
 			typBldr = _modBldr.DefineType(funName, TypeAttributes.BeforeFieldInit|TypeAttributes.Sealed|TypeAttributes.Public, GetRuntimeType(_useDynamicJsMembers ? typeof(DynamicJsObject) : typeof(StaticJsObject)), new IType[] { typeof(IJsFunction) });
 			parScope = typBldr.DefineField("~~parScope", parType, FieldAttributes.Private);
+			thisField = typBldr.DefineField("~~this", _objectType, FieldAttributes.Private);
 
 			//prototype property
-			FieldBuilder prototypeField=null;
+			FieldBuilder prototypeField =null;
 			if (!_useDynamicJsMembers)
 			{
 				IType prototypeType = GetRuntimeType(typeof(StaticJsObject));
@@ -1038,13 +1035,17 @@ namespace Jellequin.Compiler
 			}
 
 			//constructor
-			cb = typBldr.DefineConstructor(MethodAttributes.Assembly|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new IType[] { parType });
+			cb = typBldr.DefineConstructor(MethodAttributes.Assembly|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new IType[] { parType, _objectType });
 			cb.DefineParameter(1, ParameterAttributes.None, "parScope");
+			cb.DefineParameter(2, ParameterAttributes.None, "this");
 			GenerateConstructorBaseCall(cb);
 			gen=cb.GetILGenerator();
 			gen.Emit(ILOpCode.Ldarg_0);
 			gen.Emit(ILOpCode.Ldarg_1);
 			gen.Emit(ILOpCode.Stfld, parScope);
+			gen.Emit(ILOpCode.Ldarg_0);
+			gen.Emit(ILOpCode.Ldarg_2);
+			gen.Emit(ILOpCode.Stfld, thisField);
 			if (_useDynamicJsMembers)
 			{
 				//set prototype member value
@@ -1068,6 +1069,8 @@ namespace Jellequin.Compiler
 			gen=runMethod.GetILGenerator();
 			gen.Emit(ILOpCode.Ldarg_0);
 			gen.Emit(ILOpCode.Ldfld, parScope);
+			gen.Emit(ILOpCode.Ldarg_0);
+			gen.Emit(ILOpCode.Ldfld, thisField);
 			gen.Emit(ILOpCode.Newobj, cbToInvoke);
 			gen.Emit(ILOpCode.Ldarg, 1);
 			gen.Emit(ILOpCode.Call, runMethodToInvoke);
@@ -1100,6 +1103,21 @@ namespace Jellequin.Compiler
 			gen.Emit(ILOpCode.Newobj, RuntimeMethods.GetFuncType(parameterCount).GetConstructors()[0]);
 			gen.Emit(ILOpCode.Ret);*/
 
+			//Invoke method
+			runMethod = typBldr.DefineMethod("Instantiate", MethodAttributes.Public | MethodAttributes.Final | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual, _objectType, new IType[] { typeof(object[]) });
+			runMethod.DefineParameter(1, ParameterAttributes.None, "arguments");
+			gen = runMethod.GetILGenerator();
+			gen.Emit(ILOpCode.Ldarg_0);
+			gen.Emit(ILOpCode.Ldfld, parScope);
+			gen.Emit(ILOpCode.Ldarg_0);
+			gen.Emit(ILOpCode.Ldfld, thisField);
+			gen.Emit(ILOpCode.Newobj, cbToInvoke);
+			gen.Emit(ILOpCode.Dup);
+			gen.Emit(ILOpCode.Ldarg, 1);
+			gen.Emit(ILOpCode.Call, runMethodToInvoke);
+			gen.Emit(ILOpCode.Pop);
+			gen.Emit(ILOpCode.Ret);
+
 			typBldr.CreateType();
 			#endregion define container
 
@@ -1114,6 +1132,10 @@ namespace Jellequin.Compiler
 					PreSetVar(l);
 				}
 				gen.Emit(ILOpCode.Ldarg_0);
+				if (funInfoPar.ThisVar == null)
+					gen.Emit(ILOpCode.Ldnull);
+				else
+					gen.Emit(ILOpCode.Ldloc, funInfoPar.ThisVar);
 				/*gen.Emit(ILOpCode.Ldftn, runMethodNew);
 				gen.Emit(ILOpCode.Newobj, RuntimeMethods.GetFuncType(parameterCount).GetConstructors()[0]);*/
 				gen.Emit(ILOpCode.Newobj, cb);
@@ -1126,6 +1148,10 @@ namespace Jellequin.Compiler
 				if (saveToVar)
 					gen.Emit(ILOpCode.Ldarg_0);
 				gen.Emit(ILOpCode.Ldarg_0);
+				if (funInfoPar.ThisVar==null)
+					gen.Emit(ILOpCode.Ldnull);
+				else
+					gen.Emit(ILOpCode.Ldloc, funInfoPar.ThisVar);
 				/*gen.Emit(ILOpCode.Ldftn, runMethodNew);
 				gen.Emit(ILOpCode.Newobj, RuntimeMethods.GetFuncType(parameterCount).GetConstructors()[0]);*/
 				gen.Emit(ILOpCode.Newobj, cb);
@@ -1188,10 +1214,7 @@ namespace Jellequin.Compiler
 			}
 			else if (node.IsConstructor)
 			{
-				Lookup funAsLookup;
-				Member funAsMember;
-
-				if (IsType(node.Function, out funAsLookup))
+				if (node.Function is Lookup funAsLookup)
 				{
 					string objName = funAsLookup.Name;
 					Type[] types = new Type[argsCount];
@@ -1241,8 +1264,7 @@ namespace Jellequin.Compiler
 								GetVar(funAsLookup);
 							else
 							{
-								VarInfo customObj;
-								if (!funInfo.Vars.TryGetValue(objName, out customObj))
+								if (!funInfo.Vars.TryGetValue(objName, out VarInfo customObj))
 									throw new CompilerException(CompilerExceptionReason.UnknownObjectType, new object[] { objName });
 
 								gen.Emit(ILOpCode.Ldarg_0);
@@ -1257,7 +1279,7 @@ namespace Jellequin.Compiler
 							break;
 					}
 				}
-				else if (IsType(node.Function, out funAsMember))
+				else if (node.Function is Member funAsMember)
 				{
 					CompileNode(funAsMember);
 					CallRuntimeCallWithArgs();
@@ -1281,12 +1303,16 @@ namespace Jellequin.Compiler
 			GenerateSourceConstant(typBldr, node);
 
 			MarkSequencePoint(node);
-			ILGenerator gen = _functions.Peek().Gen;
+			FunctionInfo fi = _functions.Peek();
+			ILGenerator gen = fi.Gen;
+			LocalBuilder thisVarOld = fi.ThisVar;
 			gen.Emit(ILOpCode.Newobj, cb);
-			_functions.Peek().Stack++;
+			gen.Emit(ILOpCode.Dup);
+			gen.Emit(ILOpCode.Stloc, fi.ThisVar=gen.DeclareLocal(typBldr));
+
+			fi.Stack++;
 
 			if (_useDynamicJsMembers)
-			{
 				foreach (ObjectLiteralProperty item in node.Properties)
 				{
 					string varName = item.Name?.Name??(item.Value as Lookup).Name;
@@ -1294,11 +1320,9 @@ namespace Jellequin.Compiler
 					gen.Emit(ILOpCode.Ldstr, varName);
 					CompileNode(item.Value);
 					gen.Emit(ILOpCode.Callvirt, GetRuntimeType(typeof(IJsObject)).GetMethod("SetValue"));
-					_functions.Peek().Stack--;
+					fi.Stack--;
 				}
-			}
 			else
-			{
 				foreach (ObjectLiteralProperty item in node.Properties)
 				{
 					string fName = item.Name?.Name??(item.Value as Lookup).Name;
@@ -1307,11 +1331,12 @@ namespace Jellequin.Compiler
 					gen.Emit(ILOpCode.Dup);
 					CompileNode(item.Value);
 					gen.Emit(ILOpCode.Call, varInfo.Property.GetSetMethod());
-					_functions.Peek().Stack--;
+                    fi.Stack--;
 				}
-			}
 
 			typBldr.CreateType();
+
+			fi.ThisVar=thisVarOld;
 		}
 
 		void CompileMember(Member node)
@@ -1596,7 +1621,7 @@ namespace Jellequin.Compiler
 
 		void CompileTemplateLiteral(TemplateLiteral node)
 		{
-			string SanitizeString(string text) => text=="}`" ? "" : text.Substring(1, text.Length-3);
+			string SanitizeString(string text) => text=="}`" ? "" : text.Substring(1, text.Length-2);
 
 			if (node.Function!=null)
 				throw new NotImplementedException();
@@ -1607,19 +1632,20 @@ namespace Jellequin.Compiler
 			gen.Emit(ILOpCode.Ldstr, SanitizeString(node.Text));
 			funInfo.Stack++;
 
-			foreach (TemplateLiteralExpression item in node.Expressions)
-			{
-				CompileNode(item.Expression);
-				CallRuntimeMethod(nameof(RuntimeMethods.Add));
-				funInfo.Stack--;
-
-				string text = SanitizeString(item.Text);
-				if (text.Length>0)
+			if (node.Expressions!=null)
+				foreach (TemplateLiteralExpression item in node.Expressions)
 				{
-					gen.Emit(ILOpCode.Ldstr, SanitizeString(item.Text));
+					CompileNode(item.Expression);
 					CallRuntimeMethod(nameof(RuntimeMethods.Add));
+					funInfo.Stack--;
+
+					string text = SanitizeString(item.Text);
+					if (text.Length>0)
+					{
+						gen.Emit(ILOpCode.Ldstr, SanitizeString(item.Text));
+						CallRuntimeMethod(nameof(RuntimeMethods.Add));
+					}
 				}
-			}
 		}
 
 		void GenerateSourceConstant(TypeBuilder typBldr, AstNode node)
@@ -1644,8 +1670,7 @@ namespace Jellequin.Compiler
 		VarInfo DefineVar(string varName)
 		{
 			FunctionInfo funInfo = _functions.Peek();
-			VarInfo result;
-			if (!funInfo.Vars.TryGetValue(varName, out result))
+			if (!funInfo.Vars.TryGetValue(varName, out VarInfo result))
 			{
 				result=GenerateSimpleProperty(funInfo.TypBldr, varName);
 				funInfo.Vars.Add(varName, result);
@@ -1753,8 +1778,7 @@ namespace Jellequin.Compiler
 			if (pos>=0)
 				return new GetVarInfoRes { Type=GetVarInfoResType.Argument, ArgIndex=pos+1 };
 
-			VarInfo varInfo;
-			if (funInfo.Vars.TryGetValue(varName, out varInfo))
+			if (funInfo.Vars.TryGetValue(varName, out VarInfo varInfo))
 				return new GetVarInfoRes { Type=GetVarInfoResType.Variable, Variable=varInfo };
 
 			if (canDefineFromParent)
@@ -1784,26 +1808,33 @@ namespace Jellequin.Compiler
 		}
 		enum GetVarInfoResType { Argument, Variable }
 
+        enum GetVarNameResType { Direct, Member, Unknown }
+        (AstNode Root, string Name, GetVarNameResType Type) GetVarName(AstNode node)
+        {
+            return
+                node is Lookup l ? (null, l.Name, GetVarNameResType.Direct)
+                : node is BindingIdentifier b ? (null, b.Name, GetVarNameResType.Direct)
+                : node is Member m ? (m.Root, m.Name, GetVarNameResType.Member)
+                : (null, null, GetVarNameResType.Unknown);
+        }
+
 		void GetVar(AstNode node)
 		{
 			FunctionInfo funInfo = _functions.Peek();
 			ILGenerator gen = funInfo.Gen;
 
-			Lookup l;
-			BindingIdentifier b = null;
-			Member m;
-			if (IsType(node, out l))
+            (AstNode Root, string Name, GetVarNameResType Type) varNameInfo = GetVarName(node);
+            if (varNameInfo.Type==GetVarNameResType.Direct)
 			{
-				string varName = l==null ? b.Name : l.Name;
 				if (_useDynamicJsMembers)
 				{
 					gen.Emit(ILOpCode.Ldarg_0);
-					gen.Emit(ILOpCode.Ldstr, varName);
+					gen.Emit(ILOpCode.Ldstr, varNameInfo.Name);
 					gen.Emit(ILOpCode.Callvirt, GetRuntimeType(typeof(IJsObject)).GetMethod("GetValue"));
 				}
 				else
 				{
-					GetVarInfoRes vi = GetVarInfo(funInfo, varName, true, true);
+					GetVarInfoRes vi = GetVarInfo(funInfo, varNameInfo.Name, true, true);
 
 					if (vi.Type==GetVarInfoResType.Argument)
 						gen.Emit(ILOpCode.Ldarg, vi.ArgIndex);
@@ -1815,8 +1846,8 @@ namespace Jellequin.Compiler
 				}
 				funInfo.Stack++;
 			}
-			else if (IsType(node, out m))
-			{
+			else if (varNameInfo.Type == GetVarNameResType.Member)
+            {
 				/*if ((m.Root is Lookup lf)&&(lf.Name=="Object"))
 				{
 					//new StaticObject { Type=typeof(Jellequin.Runtime.Object) };
@@ -1829,8 +1860,8 @@ namespace Jellequin.Compiler
 					funInfo.Pushes++;
 				}
 				else*/
-					CompileNode(m.Root);
-				gen.Emit(ILOpCode.Ldstr, m.Name);
+					CompileNode(varNameInfo.Root);
+				gen.Emit(ILOpCode.Ldstr, varNameInfo.Name);
 				CallRuntimeMethod(nameof(RuntimeMethods.GetMember));
 			}
 			else
@@ -1842,28 +1873,25 @@ namespace Jellequin.Compiler
 			FunctionInfo funInfo = _functions.Peek();
 			ILGenerator gen = funInfo.Gen;
 
-			Lookup l;
-			BindingIdentifier b = null;
-			Member m;
-			if ((IsType(node, out l))||(IsType(node, out b)))
+			(AstNode Root, string Name, GetVarNameResType Type) varNameInfo = GetVarName(node);
+			if (varNameInfo.Type==GetVarNameResType.Direct)
 			{
-				string varName = l==null ? b.Name : l.Name;
 				if (_useDynamicJsMembers)
 				{
 					gen.Emit(ILOpCode.Ldarg_0);
-					gen.Emit(ILOpCode.Ldstr, varName);
+					gen.Emit(ILOpCode.Ldstr,varNameInfo.Name);
 				}
 				else
 				{
-					GetVarInfoRes vi = GetVarInfo(funInfo, varName, true, true);
+					GetVarInfoRes vi = GetVarInfo(funInfo,varNameInfo.Name,true,true);
 					if (vi.Type!=GetVarInfoResType.Argument)
 						gen.Emit(ILOpCode.Ldarg_0);
 				}
 			}
-			else if (IsType(node, out m))
+			else if (varNameInfo.Type==GetVarNameResType.Member)
 			{
-				CompileNode(m.Root);
-				gen.Emit(ILOpCode.Ldstr, m.Name);
+				CompileNode(varNameInfo.Root);
+				gen.Emit(ILOpCode.Ldstr,varNameInfo.Name);
 			}
 			else
 				throw new NotImplementedException();
@@ -1874,16 +1902,14 @@ namespace Jellequin.Compiler
 			FunctionInfo funInfo = _functions.Peek();
 			ILGenerator gen = funInfo.Gen;
 
-			Lookup l;
-			BindingIdentifier b = null;
-			Member m;
-			if ((IsType(node, out l))||(IsType(node, out b)))
+            (AstNode Root, string Name, GetVarNameResType Type) varNameInfo = GetVarName(node);
+            if (varNameInfo.Type==GetVarNameResType.Direct)
 			{
 				if (_useDynamicJsMembers)
 					gen.Emit(ILOpCode.Callvirt, GetRuntimeType(typeof(IJsObject)).GetMethod("SetValue"));
 				else
 				{
-					GetVarInfoRes vi = GetVarInfo(funInfo, l==null ? b.Name : l.Name, false, true);
+                    GetVarInfoRes vi = GetVarInfo(funInfo, varNameInfo.Name, false, true);
 
 					if (vi.Type==GetVarInfoResType.Argument)
 						gen.Emit(ILOpCode.Ldarg, vi.ArgIndex);
@@ -1893,7 +1919,7 @@ namespace Jellequin.Compiler
 				}
 				funInfo.Stack--;
 			}
-			else if (IsType(node, out m))
+			else if (varNameInfo.Type==GetVarNameResType.Member)
 			{
 				CallRuntimeMethod(nameof(RuntimeMethods.SetMember));
 				funInfo.Stack-=2;
@@ -1908,37 +1934,26 @@ namespace Jellequin.Compiler
 			FunctionInfo funInfo = _functions.Peek();
 			ILGenerator gen = funInfo.Gen;
 
-			/*if (_useDynamicJsMembers)
+            (AstNode Root, string Name, GetVarNameResType Type) varNameInfo = GetVarName(node);
+			if (varNameInfo.Type==GetVarNameResType.Direct)
 			{
-				gen.Emit(ILOpCode.Ldarg_0);
-				//gen.Emit(ILOpCode.Ldstr, );
-				gen.Emit(ILOpCode.Callvirt, GetRuntimeType(typeof(IJsObject)).GetMethod("DeleteMember"));
-			}*/
-
-			Lookup l;
-			BindingIdentifier b = null;
-			Member m;
-			CallNode c;
-			if ((IsType(node, out l))||(IsType(node, out b)))
-			{
-				string varName = l==null ? b.Name : l.Name;
 				if (_useDynamicJsMembers)
 				{
 					gen.Emit(ILOpCode.Ldarg_0);
-					gen.Emit(ILOpCode.Ldstr, varName);
+					gen.Emit(ILOpCode.Ldstr, varNameInfo.Name);
 					gen.Emit(ILOpCode.Callvirt, GetRuntimeType(typeof(IJsObject)).GetMethod("DeleteMember"));
 				}
 				else
 					throw new CompilerException(CompilerExceptionReason.DeleteOnStaticObject);
 			}
-			else if (IsType(node, out m))
+			else if (varNameInfo.Type==GetVarNameResType.Member)
 			{
-				CompileNode(m.Root);
-				gen.Emit(ILOpCode.Ldstr, m.Name);
+				CompileNode(varNameInfo.Root);
+				gen.Emit(ILOpCode.Ldstr, varNameInfo.Name);
 				CallRuntimeMethod(nameof(RuntimeMethods.DeleteMember));
 				funInfo.Stack--;
 			}
-			else if (IsType(node, out c))
+			else if (node is CallNode c)
 			{
 				CompileNode(c.Function);
 				CompileNode(c.Arguments[0]);
@@ -2028,6 +2043,8 @@ namespace Jellequin.Compiler
 			internal ILGenerator Gen;
 			int _pushes;
 			internal int Stack { get { return _pushes; } set { if (value<0) throw new CompilerException(CompilerExceptionReason.WrongCallStackGeneration); _pushes=value; /*if (_maxStack<value) _maxStack=value;*/ } }
+			internal LocalBuilder ThisVar;
+			internal FieldBuilder ThisField;
 			//int _maxStack;
 			//internal int MaxStack => _maxStack+1;
 			internal Dictionary<string, VarInfo> Vars = new Dictionary<string, VarInfo>();
@@ -2062,13 +2079,6 @@ namespace Jellequin.Compiler
 				FunInfo=funInfo;
 				Pushes=pushes;
 			}
-		}
-
-		static bool IsType<T>(object value, out T casted)
-		{
-			bool res = value!=null&&typeof(T).IsAssignableFrom(value.GetType());
-			casted=res ? (T)value : default(T);
-			return res;
 		}
 
 		StackInfo GetStackInfo()

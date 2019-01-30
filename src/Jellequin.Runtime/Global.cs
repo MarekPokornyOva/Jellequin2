@@ -549,16 +549,29 @@ tan(x) 	Returns the tangent of an angle
 		//Sorts the elements of an array
 		public ArrayObject sort()
 		{
-			throw new NotImplementedException();
-			//this.Sort();
-			//return this;
+			this._values.Sort();
+			return this;
 		}
 
 		//Sorts the elements of an array
 		public ArrayObject sort(object sortFunction)
 		{
-			throw new NotImplementedException();
+			this._values.Sort(new SortComparer(sortFunction));
+			return this;
 		}
+
+		#region helpers
+		class SortComparer:IComparer<object>
+		{
+			readonly object _sortFunction;
+
+			public SortComparer(object sortFunction)
+				=> _sortFunction=sortFunction;
+
+			public int Compare(object x,object y)
+				=> (int)RuntimeMethods.CallMethod(_sortFunction,new object[] { x,y });
+		}
+		#endregion helpers
 
 		//Adds/Removes elements from an array
 		public ArrayObject splice(int index,int howmany,/*params */object/*[]*/ items)

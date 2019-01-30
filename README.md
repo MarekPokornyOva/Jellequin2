@@ -1,4 +1,4 @@
-![alt text](./VsExtension/JellequinVs2017.ProjectType/Jellequin.ico "Logo")
+![Logo](./VsExtension/JellequinVs2017.ProjectType/Jellequin.ico "Logo")
 # Jellequin
 
 ### Description
@@ -13,6 +13,12 @@ It is also possible to build executable application (single file or referring ru
 * Possible to copy runtime functionality to target assembly
 * Possible to generate console application
 * Visual studio integration - not well working trial of intergration to VS2017
+
+### Documentation
+[See](./Documentation.md)
+
+### Release notes
+[See](./ReleaseNotes.md)
 
 ### Thanks to
 This project uses pieces of

@@ -10,6 +10,9 @@
     <Authors>Marek Pokorný</Authors>
     <Product>Jellequin</Product>
     <Description>Jellequin is EcmaScript compiler to CLR (.NET) assembly with debug ability. Compiler allows to compile source ES code to an assembly.</Description>
+    <Version>1.0.1</Version>
+    <PackageReleaseNotes>- add "this." support.
+- fix literal template compilation.</PackageReleaseNotes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
