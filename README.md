@@ -1,6 +1,10 @@
 ![Logo](./VsExtension/JellequinVs2017.ProjectType/Jellequin.ico "Logo")
 # Jellequin
 
+[![Package Version](https://img.shields.io/nuget/v/Jellequin.Compiler.svg)](https://www.nuget.org/packages/Blazor.Extensions.Notifications)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Jellequin.Compiler.svg)](https://www.nuget.org/packages/Blazor.Extensions.Notifications)
+[![License](https://img.shields.io/github/license/MarekPokornyOva/Jellequin2.svg)](https://github.com/BlazorExtensions/Notifications/blob/master/LICENSE)
+
 ### Description
 Jellequin is EcmaScript compiler to CLR (.NET) assembly with debug ability.
 Jellequin is an implementation of script language which would be as most as possible like Javascript. It aims to compile the script to IL (.NET) assembly and be able to deeply integrate with hosting environment/application (e.g. written in C#) . It is intended to be able to extend core parts of .NET application with simple and well known script language.
