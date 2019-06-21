@@ -10,8 +10,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Jellequin.Compiler\Jellequin.Compiler.csproj" />
-    <ProjectReference Include="..\..\src\Jellequin.Runtime\Jellequin.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\Compilation\Jellequin.Compiler\Jellequin.Compiler.csproj" />
+    <ProjectReference Include="..\..\src\Runtime\Jellequin.Runtime\Jellequin.Runtime.csproj" />
   </ItemGroup>
 
 </Project>
