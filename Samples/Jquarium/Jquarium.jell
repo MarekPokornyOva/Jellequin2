@@ -13,8 +13,7 @@ var StringBuilder=coreLibDll.System.Text.StringBuilder;
 
 var os=runtimeExtsDll.System.Environment.OSVersion.Platform;
 var PlatformID=runtimeExtsDll.System.PlatformID;
-//var isWinNt=os == PlatformID.Win32NT;
-var isWinNt=false;
+var isWinNt=os == PlatformID.Win32NT;
 
 var _life;
 var _engine;
@@ -47,8 +46,9 @@ function Cell(x,y,chr,foreColor)
 var BodyHelper={
 	BodyFromString:function(body, color) {
 		var result=new List();
-		var pos = new Point2D(0, 0);
-		for (var chInd=0;chInd<body.length;chInd++)
+		var pos=new Point2D(0, 0);
+		var len=body.length;
+		for (var chInd=0;chInd<len;chInd++)
 		{
 			var ch=body[chInd];
 			if (ch==' ')
@@ -68,8 +68,8 @@ var BodyHelper={
 
 	Colorize:function (body,color) {
 		var result = new List();
-		//result.AddRange(body.Select(cell => new Cell(cell.Coords.X, cell.Coords.Y, cell.Char, color)));
-		for (var a=0;a<body.Count;a++)
+		var len=body.Count;
+		for (var a=0;a<len;a++)
 		{
 			var cell=body[a];
 			result.Add(new Cell(cell.Coords.X, cell.Coords.Y, cell.Char, color));
@@ -123,7 +123,8 @@ function World(creatureCount,creator)
 	{
 		var zIndex = obj.ZIndex;
 		var refInd=-1;
-		for (var a=0;a<_objects.length;a++)
+		var len=_objects.length;
+		for (var a=0;a<len;a++)
 			if (_objects[a].ZIndex >= zIndex)
 			{
 				refInd=a;
@@ -150,7 +151,8 @@ function World(creatureCount,creator)
 		for (var a=0;a<toCreateCount;a++)
 			this.AddObject(creator());
 
-		for (var a=0;a<_objects.length;a++)
+		var len=_objects.length;
+		for (var a=0;a<len;a++)
 		{
 			var obj=_objects[a];
 			obj.Coords.Move(obj.Object.Animate());
@@ -169,7 +171,8 @@ function Transition()
 	this.Invoke=function() {
 		ConsoleColor lastColor = ConsoleColor.DarkBlue;
 
-		for (var a=0;a<this._objects.Count;a++)
+		var len=this._objects.Count;
+		for (var a=0;a<len;a++)
 		{
 			var cell=this._objects[a];
 			ConsoleColor cellColor = cell.ForeColor;
@@ -187,21 +190,11 @@ function Transition()
 
 function FindIndex(enumerable,checkFunc)
 {
-	for (var a=0;a<enumerable.length;a++)
+	var len=enumerable.length;
+	for (var a=0;a<len;a++)
 		if (checkFunc(enumerable[a]))
 			return a;
 	return -1;
-}
-
-function FirstOrDefault(enumerable,checkFunc,def)
-{
-	for (var a=0;a<enumerable.length;a++)
-	{
-		var val=enumerable[a];
-		if (checkFunc(val))
-			return val;
-	}
-	return def;
 }
 
 function RendererWin(playgroundSize, backColor)
@@ -215,7 +208,8 @@ function RendererWin(playgroundSize, backColor)
 
 	this.CalculateObjectsInView=function(objects,removeAction) {
 		_objects.Clear();
-		for (var a=0;a<objects.length;a++)
+		var len=objects.length;
+		for (var a=0;a<len;a++)
 		{
 			var obj=objects[a];
 			var viewBody = CalculateBodyInView(obj);
@@ -230,7 +224,8 @@ function RendererWin(playgroundSize, backColor)
 		var result = new List();
 		var zero = obj.Coords;
 		var body=obj.Object.GetBody();
-		for (var a=0;a<body.length;a++)
+		var len=body.length;
+		for (var a=0;a<len;a++)
 		{
 			var cell=body[a];
 			var x = zero.X + cell.Coords.X;
@@ -253,44 +248,54 @@ function RendererWin(playgroundSize, backColor)
 	};
 
 	this.GetCurrentFrame=function() {
-		var result = new List();
-		for (var a=0;a<_objects.length;a++)
+		var result = [];
+		var len=_objects.length;
+		for (var a=0;a<len;a++)
 		{
 			var obj=_objects[a];
-			for (var b=0;b<obj.length;b++)
+			var len2=obj.length;
+			for (var b=0;b<len2;b++)
 			{
 				var cell=obj[b];
-				//var behindIndex = result.FindIndex(function(x){return x.Coords.Equals(cell.Coords);});
 				var behindIndex = FindIndex(result,function(x){return x.Coords.X==cell.Coords.X && x.Coords.Y==cell.Coords.Y;});
-				if (behindIndex != -1)
-					result.RemoveAt(behindIndex);
-				result.Add(cell);
+				if (behindIndex == -1)
+					result.push(cell);
+				else
+					result[behindIndex]=cell;
 			}
 		}
-		/*result.Sort(function(x,y){
-			int compY = x.Coords.Y.CompareTo(y.Coords.Y);
+		result.sort(function(x, y) {
+			var compY = x.Coords.Y.CompareTo(y.Coords.Y);
 			return compY == 0 ? x.Coords.X.CompareTo(y.Coords.X) : compY;
-		});*/
+		});
 		return result;
 	};
 
 	this.CreateTransition=function(oldFrame, newFrame, backColor) {
 		var result = new Transition();
-		for (var y = 0; y < playgroundSize.H; y++)
-			for (var x = 0; x < playgroundSize.W; x++)
-			{
-				var oldCell = FirstOrDefault(oldFrame,function(cell) {return cell.Coords.X==x && cell.Coords.Y==y;},null);
-				var newCell = FirstOrDefault(newFrame,function(cell) {return cell.Coords.X==x && cell.Coords.Y==y;},null);
+		var resObjs=result._objects;
+		var len=oldFrame.length;
+		for (var a=0;a<len;a++)
+		{
+			var cell=oldFrame[a];
+			resObjs.Add(new Cell(cell.Coords.X,cell.Coords.Y,' ',0));
+		}
+		len=newFrame.length;
+		for (var a=0;a<len;a++)
+		{
+			var cell=newFrame[a];
+			var oldCellIndex = FindIndex(resObjs,function(x){return x.Coords.X==cell.Coords.X && x.Coords.Y==cell.Coords.Y;});
+			if (oldCellIndex==-1)
+				resObjs.Add(cell);
+			else
+				resObjs[oldCellIndex]=cell;
+		}
 
-				if (newCell == null)
-				{
-					if (oldCell!=null)
-						result._objects.Add(new Cell(x, y, ' ', backColor));
-				}
-				else
-					if ((oldCell==null)||(oldCell.ForeColor!=newCell.ForeColor)||(oldCell.Char!=newCell.Char))
-						result._objects.Add(newCell);
-			}
+		/*resObjs.sort(function(x, y) {
+			var compY = x.Coords.Y.CompareTo(y.Coords.Y);
+			return compY == 0 ? x.Coords.X.CompareTo(y.Coords.X) : compY;
+		});*/
+
 		return result;
 	};
 }
@@ -341,7 +346,6 @@ function RendererUnix(playgroundSize, backColor)
 			for (var b=0;b<obj.length;b++)
 			{
 				var cell=obj[b];
-				//int behindIndex = result.FindIndex(x => x.Coords.Equals(cell.Coords));
 				var behindIndex = FindIndex(result,function(x){return x.Coords.X==cell.Coords.X && x.Coords.Y==cell.Coords.Y;});
 				if (behindIndex == -1)
 					result.push(cell);
