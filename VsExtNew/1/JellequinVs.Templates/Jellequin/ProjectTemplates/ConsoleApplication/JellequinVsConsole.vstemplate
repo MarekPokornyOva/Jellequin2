@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VSTemplate Version="3.0.0" Type="Project" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005" xmlns:sdk="http://schemas.microsoft.com/developer/vstemplate-sdkextension/2010">
+  <TemplateData>
+    <Name>Jellequin console application</Name>
+    <Description>A template for creating a Jellequin console application.</Description>
+    <Icon>Jellequin.ico</Icon>
+    <ProjectType>Jellequin</ProjectType>
+    <RequiredFrameworkVersion>4.0</RequiredFrameworkVersion>
+    <SortOrder>1</SortOrder>
+    <TemplateID>{089a385f-7674-4f56-839f-760d76f66d5a}</TemplateID>
+    <CreateNewFolder>true</CreateNewFolder>
+    <DefaultName>JellequinConsoleApp</DefaultName>
+    <ProvideDefaultName>true</ProvideDefaultName>
+  </TemplateData>
+  <TemplateContent>
+    <Project File="JellequinVs.jellproj" ReplaceParameters="true">
+      <!-- 
+      These are the items which will show up when a new project is created using the custom project system.
+      Items referenced in here must also be referenced in the project file.
+      -->
+      <ProjectItem OpenInEditor="true" ReplaceParameters="true">Program.jell.js</ProjectItem>
+	 </Project>
+  </TemplateContent>
+</VSTemplate>

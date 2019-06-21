@@ -435,13 +435,20 @@ namespace Jellequin.Compiler
 				CompileNode(node.Operand1);
 				CompileNode(node.Operand2);
 				CallRuntimeMethod(node.OperatorToken==JSToken.BitwiseAndAssign ? nameof(RuntimeMethods.BitwiseAnd) : nameof(RuntimeMethods.BitwiseOr));
+				funInfo.Stack--;
+				LocalBuilder lb=null;
 				if (node.IsExpression)
 				{
+					lb=gen.DeclareLocal(_objectType);
 					gen.Emit(ILOpCode.Dup);
+					gen.Emit(ILOpCode.Stloc,lb);
+				}
+				SetVar(node.Operand1);
+				if (node.IsExpression)
+				{
+					gen.Emit(ILOpCode.Ldloc,lb);
 					funInfo.Stack++;
 				}
-				funInfo.Stack--;
-				SetVar(node.Operand1);
 			}
 			else if (node.Precedence==OperatorPrecedence.Equality)
 			{
@@ -450,7 +457,6 @@ namespace Jellequin.Compiler
 				CompileNode(node.Operand1);
 				CompileNode(node.Operand2);
 
-				//CompileLogicalInternal(node, ILOpCode.Brtrue, ILOpCode.Ldc_I4_1);
 				CallRuntimeMethod(nameof(RuntimeMethods.Equals));
 				if (node.OperatorToken==JSToken.NotEqual)
 				{
@@ -488,13 +494,20 @@ namespace Jellequin.Compiler
 				CompileNode(node.Operand1);
 				CompileNode(node.Operand2);
 				CallRuntimeMethod(node.OperatorToken==JSToken.PlusAssign?nameof(RuntimeMethods.Add):nameof(RuntimeMethods.Sub));
-				/*if (node.IsExpression)
-				{
-					gen.Emit(ILOpCode.Dup);
-					funInfo.Stack++;
-				}*/
 				funInfo.Stack--;
+				LocalBuilder lb = null;
+				if (node.IsExpression)
+				{
+					lb=gen.DeclareLocal(_objectType);
+					gen.Emit(ILOpCode.Dup);
+					gen.Emit(ILOpCode.Stloc,lb);
+				}
 				SetVar(node.Operand1);
+				if (node.IsExpression)
+				{
+					gen.Emit(ILOpCode.Ldloc,lb);
+					funInfo.Stack++;
+				}
 			}
 			else if (node.OperatorToken==JSToken.Multiply)
 			{
@@ -638,7 +651,6 @@ namespace Jellequin.Compiler
 
 		void CompileUnaryOperator(UnaryOperator node)
 		{
-
 			FunctionInfo funInfo = _functions.Peek();
 			ILGenerator gen = funInfo.Gen;
 
@@ -673,13 +685,13 @@ namespace Jellequin.Compiler
 					gen.Emit(ILOpCode.Ldc_i4_1);
 					gen.Emit(ILOpCode.Box, typeof(int));
 					CallRuntimeMethod(opName);
-					if (node.IsExpression)
-					{
-						gen.Emit(ILOpCode.Dup);
-						funInfo.Stack++;
-					}
+
+					LocalBuilder lb = gen.DeclareLocal(_objectType);
+					gen.Emit(ILOpCode.Dup);
+					gen.Emit(ILOpCode.Stloc,lb);
 
 					SetVar(varName);
+					gen.Emit(ILOpCode.Ldloc,lb);
 				}
 			}
 			else if (node.OperatorToken==JSToken.Minus)
@@ -919,7 +931,7 @@ namespace Jellequin.Compiler
 			FieldBuilder parScope = typBldr.DefineField("~~parScope", parType, FieldAttributes.Private);
 			FieldBuilder thisField = typBldr.DefineField("~~this", _objectType, FieldAttributes.Private);
 
-            MethodBuilder runMethod = typBldr.DefineMethod("~~Run", MethodAttributes.HideBySig|MethodAttributes.Assembly, _objectType, new IType[] { typeof(object[]) });
+			MethodBuilder runMethod = typBldr.DefineMethod("~~Run", MethodAttributes.HideBySig|MethodAttributes.Assembly, _objectType, new IType[] { typeof(object[]) });
 			runMethod.DefineParameter(1, ParameterAttributes.None, "arguments");
 			int parameterCount = node.ParameterDeclarations.Count;
 			string[] argNames = new string[parameterCount];
@@ -1998,7 +2010,6 @@ namespace Jellequin.Compiler
 
 		void CallRuntimeMethod(MethodInfo rawRuntimeMethod)
 		{
-
 			_functions.Peek().Gen.Emit(ILOpCode.Call, GetRuntimeMethod(rawRuntimeMethod));
 		}
 

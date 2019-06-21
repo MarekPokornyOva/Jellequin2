@@ -1,0 +1,5 @@
+c:\Users\pokormar\AppData\Local\Microsoft\VisualStudio\15.0_a027e387Exp\Extensions\Marek Pokorny\Jellequin\1.0\BuildSystem\
+c:\Users\pokormar\Documents\vsp\private\Jellequin2.Portable\VsExtension\JellequinVs2017.ProjectType\BuildSystem\Rules\
+
+Sample
+c:\Users\pokormar\source\repos\
