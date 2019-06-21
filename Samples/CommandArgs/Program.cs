@@ -4,6 +4,7 @@
 
 #region using
 using Jellequin.Compiler;
+using Jellequin.Reflection.Emit;
 using Jellequin.Runtime;
 using System;
 using System.IO;
@@ -80,13 +81,15 @@ console.WriteLine();
 			using (Stream dll = new MemoryStream())
 			using (Stream pdb = new MemoryStream())
 			{
-				Compiler.Compile(new StringSource(code), dll, new AssemblyName("testik"), new CompilerOptions
+				Compiler.Compile(code, new AssemblyName("testik"), new CompilerOptions
 				{
 					FileKind = FileKind.ConsoleExe,
 					RuntimeMethodsUsage = RuntimeMethodsUsage.Call,
 					DontUseDynamicJsMembers = true,
-					Debug = new DebugOptions { Debug = true, EmbedSourceCode = true, Pdb = pdb },
-				});
+					//Debug = new DebugOptions { Debug = true, EmbedSourceCode = true, Pdb = pdb },
+					Debug = true
+				})
+				.Save(dll,new SaveOptions { Symbols=new SymbolsSaveOptions { Code=new StringSource(code),EmbedSource=false,Pdb=pdb } });
 
 				//Generated assembly and debug symbols might be stored to files...
 				string basePath = GetFilePath(Path.Combine("out", "testik."));

@@ -24,6 +24,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Reflection\Jellequin.Reflection.AssemblyCopier\Jellequin.Reflection.AssemblyCopier.csproj" />
+    <ProjectReference Include="..\..\Reflection\Jellequin.Reflection.Emit.SaveAssembly\Jellequin.Reflection.Emit.SaveAssembly.csproj" />
+    <ProjectReference Include="..\..\Reflection\Jellequin.Reflection.Emit\Jellequin.Reflection.Emit.csproj" />
     <ProjectReference Include="..\..\Runtime\Jellequin.Runtime\Jellequin.Runtime.csproj" />
     <ProjectReference Include="..\MsAjaxMinJavaScript\MsAjaxMinJavaScript.csproj" />
   </ItemGroup>

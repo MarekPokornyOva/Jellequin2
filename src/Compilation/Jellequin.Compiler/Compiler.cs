@@ -18,11 +18,11 @@ namespace Jellequin.Compiler
 	{
 		#region public
 		readonly static CodeSettings _parseSettings = new CodeSettings { ReorderScopeDeclarations=false, StripDebugStatements=false, LocalRenaming=LocalRenaming.KeepAll, PreserveFunctionNames=true, RemoveFunctionExpressionNames=false };
-		public static void Compile(ISource code, Stream assembly, AssemblyName assemblyName, CompilerOptions options)
+		public static AssemblyBuilder Compile(string code, AssemblyName assemblyName, CompilerOptions options)
 		{
-			Block block = new JSParser().Parse(code.GetText(), _parseSettings);
+			Block block = new JSParser().Parse(code, _parseSettings);
 			//string s = OutNode(block);
-			new Compiler().CompileInt(code, block, assembly, assemblyName, options);
+			return new Compiler().CompileInt(block, assemblyName, options);
 		}
 
 		/*public static string OutNode(AstNode node)
@@ -43,37 +43,50 @@ namespace Jellequin.Compiler
 		#endregion fields
 
 		#region root compile
-		internal void CompileInt(ISource code, Block block, Stream assembly, AssemblyName assemblyName, CompilerOptions options)
+		internal AssemblyBuilder CompileInt(Block block, AssemblyName assemblyName, CompilerOptions options)
 		{
-			DebugOptions debugOptions = options.Debug ?? new DebugOptions();
-			_debug=debugOptions.Debug;
+			_debug=options.Debug;
 			_runtimeMethodsUsage=options.RuntimeMethodsUsage;
 			_useDynamicJsMembers=!options.DontUseDynamicJsMembers;
 
-			_modBldr=ModuleBuilder.Create(assemblyName);
+			_modBldr=new ModuleBuilder(assemblyName);
 			if (_debug)
 				_symbolWriter=_modBldr.DefineDocument(assemblyName.Name+".jell"/*, SymDocumentType.Text, SymLanguageType.JScript, Guid.Empty*/);
+			if (_runtimeMethodsUsage==RuntimeMethodsUsage.Copy)
+				new AssemblyCopier(typeof(IJsObject).Assembly,TargetFramework.Current).CopyTo(_modBldr);
 
-			TypeBuilder typBldr = _modBldr.DefineType("Root", TypeAttributes.BeforeFieldInit|TypeAttributes.Sealed|TypeAttributes.Public, GetBaseType(true));
+			CompileCode(block);
+
+			MethodBuilder entryPoint = GenerateStaticExecutor((TypeBuilder)_modBldr.GetType(_rootTypeName),options.FileKind);
+
+			return new AssemblyBuilder(_modBldr,entryPoint);
+		}
+
+		const string _rootTypeName= "Root";
+
+		internal void CompileCode(Block block)
+		{
+			TypeBuilder typBldr = _modBldr.DefineType(_rootTypeName,TypeAttributes.BeforeFieldInit|TypeAttributes.Sealed|TypeAttributes.Public,GetBaseType(true));
 			AddDebuggerTypeProxyAttribute(typBldr);
-			typBldr.DefineField("~externalLibraryResolver", typeof(Action<>).MakeGenericType(GetRuntimeType(typeof(ResolveExternalLibraryEventArgs))), FieldAttributes.Private);
+			typBldr.DefineField("~externalLibraryResolver",typeof(Action<>).MakeGenericType(GetRuntimeType(typeof(ResolveExternalLibraryEventArgs))),FieldAttributes.Private);
 			GenerateRuntimeInfo();
 
-			MethodBuilder m = typBldr.DefineMethod("Main", MethodAttributes.Public, typeof(void), new IType[] { typeof(object[]) });
-			m.DefineParameter(1, ParameterAttributes.None, "arguments");
+			MethodBuilder m = typBldr.DefineMethod("Main",MethodAttributes.Public,typeof(void),new Type[] { typeof(object[]) });
+			m.DefineParameter(1,ParameterAttributes.None,"arguments");
 			ILGenerator gen = m.GetILGenerator();
 			if (_debug)
-				gen.MarkSequencePoint(_symbolWriter, block.Context.StartLineNumber, block.Context.StartColumn, block.Context.EndLineNumber, block.Context.EndColumn);
+				gen.MarkSequencePoint(_symbolWriter,block.Context.StartLineNumber,block.Context.StartColumn,block.Context.EndLineNumber,block.Context.EndColumn);
 			Label endLabel;
-			FunctionInfo funInfo = new FunctionInfo { TypBldr=typBldr, Gen=gen, Args = new[] { "arguments" }, EndLabel = (endLabel=gen.DefineLabel()) };
+			FunctionInfo funInfo = new FunctionInfo { TypBldr=typBldr,Gen=gen,Args=new[] { "arguments" },EndLabel=(endLabel=gen.DefineLabel()) };
 			_functions.Push(funInfo);
 			CompileNode(block);
 			FinalizeFunctionPushes(funInfo.Stack);
 			gen.MarkLabel(endLabel);
-			gen.MarkSequencePoint(_symbolWriter, block.Context.EndLineNumber, block.Context.EndColumn, block.Context.EndLineNumber, block.Context.EndColumn+1);
+			if (_debug)
+				gen.MarkSequencePoint(_symbolWriter,block.Context.EndLineNumber,block.Context.EndColumn,block.Context.EndLineNumber,block.Context.EndColumn+1);
 			gen.Emit(ILOpCode.Ret);
 
-			ConstructorBuilder cb = typBldr.DefineConstructor(MethodAttributes.Public|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new IType[0]);
+			ConstructorBuilder cb = typBldr.DefineConstructor(MethodAttributes.Public|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig,CallingConventions.Standard,new Type[0]);
 			GenerateConstructorBaseCall(cb);
 			gen=cb.GetILGenerator();
 			gen.Emit(ILOpCode.Ret);
@@ -85,20 +98,7 @@ namespace Jellequin.Compiler
 			foreach (TypeBuilder item in funcs)
 				item.CreateType();*/
 
-			MethodBuilder entryPoint = GenerateStaticExecutor(typBldr, options.FileKind);
-			typBldr.CreateType();
-
-			Stream runtimeAsm=null;
-			try
-			{
-				runtimeAsm=_runtimeMethodsUsage==RuntimeMethodsUsage.Copy?File.OpenRead(typeof(Jellequin.Runtime.IJsObject).Assembly.Location):null;
-				new AssemblyWriter().Write(_modBldr, debugOptions, code, entryPoint, assembly, runtimeAsm, options.Icon);
-			}
-			finally
-			{
-				if (runtimeAsm!=null)
-					runtimeAsm.Dispose();
-			}
+			//typBldr.CreateType();
 		}
 
 		Type GetBaseType() => GetBaseType(false);
@@ -111,7 +111,7 @@ namespace Jellequin.Compiler
 
 		ConstructorBuilder DefineSimpleConstructor(TypeBuilder typBldr)
 		{
-			ConstructorBuilder cb = typBldr.DefineConstructor(MethodAttributes.Public|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new IType[0]);
+			ConstructorBuilder cb = typBldr.DefineConstructor(MethodAttributes.Public|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new Type[0]);
 			ILGenerator gen = cb.GetILGenerator();
 			GenerateConstructorBaseCall(cb);
 			gen.Emit(ILOpCode.Ret);
@@ -122,18 +122,18 @@ namespace Jellequin.Compiler
 		{
 			ILGenerator gen = cb.GetILGenerator();
 			gen.Emit(ILOpCode.Ldarg_0);
-			gen.Emit(ILOpCode.Call, ((NetType)cb.DeclaringType.BaseType).Type.GetConstructor(Type.EmptyTypes));
+			gen.Emit(ILOpCode.Call, cb.DeclaringType.BaseType.GetConstructor(Type.EmptyTypes));
 		}
 
 		void GenerateRuntimeInfo()
 		{
 			Assembly asm = typeof(Jellequin.Runtime.IJsObject).Assembly;
 			TypeBuilder typBldr = _modBldr.DefineType("CompileRuntimeInfo", TypeAttributes.BeforeFieldInit|TypeAttributes.Sealed|TypeAttributes.Public, _objectType);
-			FieldBuilder fb = typBldr.DefineField("Version", typeof(string), FieldAttributes.Public|FieldAttributes.Literal|FieldAttributes.HasDefault);
+			FieldBuilder fb = typBldr.DefineField("Version", typeof(string), FieldAttributes.Public|FieldAttributes.Static|FieldAttributes.Literal|FieldAttributes.HasDefault);
 			fb.SetConstant(asm.GetName().Version.ToString());
-			fb=typBldr.DefineField("ModuleVersionId", typeof(string), FieldAttributes.Public|FieldAttributes.Literal|FieldAttributes.HasDefault);
+			fb=typBldr.DefineField("ModuleVersionId", typeof(string), FieldAttributes.Public|FieldAttributes.Static|FieldAttributes.Literal|FieldAttributes.HasDefault);
 			fb.SetConstant(asm.ManifestModule.ModuleVersionId.ToString());
-			fb=typBldr.DefineField("RuntimeCopied", typeof(bool), FieldAttributes.Public|FieldAttributes.Literal|FieldAttributes.HasDefault);
+			fb=typBldr.DefineField("RuntimeCopied", typeof(bool), FieldAttributes.Public|FieldAttributes.Static|FieldAttributes.Literal|FieldAttributes.HasDefault);
 			fb.SetConstant(_runtimeMethodsUsage==RuntimeMethodsUsage.Copy);
 			typBldr.CreateType();
 		}
@@ -143,7 +143,7 @@ namespace Jellequin.Compiler
 			if (fileKind==FileKind.Dll)
 				return null;
 
-			MethodBuilder m = typBldr.DefineMethod("~~Entry", MethodAttributes.Public|MethodAttributes.Static, typeof(void), new IType[] { typeof(string[]) });
+			MethodBuilder m = typBldr.DefineMethod("~~Entry", MethodAttributes.Public|MethodAttributes.Static, typeof(void), new Type[] { typeof(string[]) });
 			m.DefineParameter(1,ParameterAttributes.None,"arguments");
 			ILGenerator gen = m.GetILGenerator();
 			gen.Emit(ILOpCode.Call, typeof(Assembly).GetMethod("GetExecutingAssembly", BindingFlags.Public|BindingFlags.Static));
@@ -931,7 +931,7 @@ namespace Jellequin.Compiler
 			FieldBuilder parScope = typBldr.DefineField("~~parScope", parType, FieldAttributes.Private);
 			FieldBuilder thisField = typBldr.DefineField("~~this", _objectType, FieldAttributes.Private);
 
-			MethodBuilder runMethod = typBldr.DefineMethod("~~Run", MethodAttributes.HideBySig|MethodAttributes.Assembly, _objectType, new IType[] { typeof(object[]) });
+			MethodBuilder runMethod = typBldr.DefineMethod("~~Run", MethodAttributes.HideBySig|MethodAttributes.Assembly, _objectType, new Type[] { typeof(object[]) });
 			runMethod.DefineParameter(1, ParameterAttributes.None, "arguments");
 			int parameterCount = node.ParameterDeclarations.Count;
 			string[] argNames = new string[parameterCount];
@@ -994,7 +994,7 @@ namespace Jellequin.Compiler
 			gen.Emit(ILOpCode.Ret);
 			_functions.Pop();
 
-			ConstructorBuilder cb = typBldr.DefineConstructor(MethodAttributes.Assembly|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new IType[] { parType, _objectType });
+			ConstructorBuilder cb = typBldr.DefineConstructor(MethodAttributes.Assembly|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new Type[] { parType, _objectType });
 			cb.DefineParameter(1, ParameterAttributes.None, "parScope");
 			cb.DefineParameter(2, ParameterAttributes.None, "this");
 			GenerateConstructorBaseCall(cb);
@@ -1026,7 +1026,7 @@ namespace Jellequin.Compiler
 			#region define container
 			ConstructorBuilder cbToInvoke = cb;
 			MethodBuilder runMethodToInvoke = runMethod;
-			typBldr = _modBldr.DefineType(funName, TypeAttributes.BeforeFieldInit|TypeAttributes.Sealed|TypeAttributes.Public, GetRuntimeType(_useDynamicJsMembers ? typeof(DynamicJsObject) : typeof(StaticJsObject)), new IType[] { typeof(IJsFunction) });
+			typBldr = _modBldr.DefineType(funName, TypeAttributes.BeforeFieldInit|TypeAttributes.Sealed|TypeAttributes.Public, GetRuntimeType(_useDynamicJsMembers ? typeof(DynamicJsObject) : typeof(StaticJsObject)), new Type[] { typeof(IJsFunction) });
 			parScope = typBldr.DefineField("~~parScope", parType, FieldAttributes.Private);
 			thisField = typBldr.DefineField("~~this", _objectType, FieldAttributes.Private);
 
@@ -1034,10 +1034,10 @@ namespace Jellequin.Compiler
 			FieldBuilder prototypeField =null;
 			if (!_useDynamicJsMembers)
 			{
-				IType prototypeType = GetRuntimeType(typeof(StaticJsObject));
+				Type prototypeType = GetRuntimeType(typeof(StaticJsObject));
 				prototypeField = typBldr.DefineField($"<prototype>k__BackingField", prototypeType, FieldAttributes.Private);
-				PropertyBuilder prototypePropBldr = typBldr.DefineProperty("prototype", PropertyAttributes.None, prototypeType, IType.EmptyTypes);
-				MethodBuilder varGetter = typBldr.DefineMethod("get_prototype", MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, prototypeType, IType.EmptyTypes);
+				PropertyBuilder prototypePropBldr = typBldr.DefineProperty("prototype", PropertyAttributes.None, prototypeType, Type.EmptyTypes);
+				MethodBuilder varGetter = typBldr.DefineMethod("get_prototype", MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, prototypeType, Type.EmptyTypes);
 				prototypePropBldr.SetGetMethod(varGetter);
 				//GenerateVarGetter
 				gen=varGetter.GetILGenerator();
@@ -1047,7 +1047,7 @@ namespace Jellequin.Compiler
 			}
 
 			//constructor
-			cb = typBldr.DefineConstructor(MethodAttributes.Assembly|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new IType[] { parType, _objectType });
+			cb = typBldr.DefineConstructor(MethodAttributes.Assembly|MethodAttributes.RTSpecialName|MethodAttributes.SpecialName|MethodAttributes.HideBySig, CallingConventions.Standard, new Type[] { parType, _objectType });
 			cb.DefineParameter(1, ParameterAttributes.None, "parScope");
 			cb.DefineParameter(2, ParameterAttributes.None, "this");
 			GenerateConstructorBaseCall(cb);
@@ -1076,7 +1076,7 @@ namespace Jellequin.Compiler
 			gen.Emit(ILOpCode.Ret);
 
 			//Invoke method
-			runMethod = typBldr.DefineMethod("Invoke", MethodAttributes.Public|MethodAttributes.Final|MethodAttributes.HideBySig|MethodAttributes.NewSlot|MethodAttributes.Virtual, _objectType, new IType[] { typeof(object[]) });
+			runMethod = typBldr.DefineMethod("Invoke", MethodAttributes.Public|MethodAttributes.Final|MethodAttributes.HideBySig|MethodAttributes.NewSlot|MethodAttributes.Virtual, _objectType, new Type[] { typeof(object[]) });
 			runMethod.DefineParameter(1, ParameterAttributes.None, "arguments");
 			gen=runMethod.GetILGenerator();
 			gen.Emit(ILOpCode.Ldarg_0);
@@ -1116,7 +1116,7 @@ namespace Jellequin.Compiler
 			gen.Emit(ILOpCode.Ret);*/
 
 			//Invoke method
-			runMethod = typBldr.DefineMethod("Instantiate", MethodAttributes.Public | MethodAttributes.Final | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual, _objectType, new IType[] { typeof(object[]) });
+			runMethod = typBldr.DefineMethod("Instantiate", MethodAttributes.Public | MethodAttributes.Final | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual, _objectType, new Type[] { typeof(object[]) });
 			runMethod.DefineParameter(1, ParameterAttributes.None, "arguments");
 			gen = runMethod.GetILGenerator();
 			gen.Emit(ILOpCode.Ldarg_0);
@@ -1589,12 +1589,12 @@ namespace Jellequin.Compiler
 			if (hasFinallyBlock)
 			{
 				finallyRegion=gen.AddFinallyRegion();
-				finallyRegion.MarkTryStart(); //try
+				//finallyRegion.MarkTryStart(); //try
 			}
 			if (hasCatchBlock)
 			{
 				catchRegion=gen.AddCatchRegion(typeof(Exception));
-				catchRegion.MarkTryStart(); //try
+				//catchRegion.MarkTryStart(); //try
 			}
 
 			CompileNode(node.TryBlock);
@@ -1602,7 +1602,8 @@ namespace Jellequin.Compiler
 			if (hasCatchBlock)
 			{
 				gen.Emit(ILOpCode.Leave, catchRegion.HandleEnd);
-				catchRegion.MarkHandleStart(); //catch
+				//catchRegion.MarkHandleStart(); //catch
+				gen.BeginCatchBlock(typeof(Exception));
 
 				BindingIdentifier exceptionVar = (BindingIdentifier)node.CatchParameter?.Binding;
 				if (exceptionVar!=null)
@@ -1618,16 +1619,19 @@ namespace Jellequin.Compiler
 
 				CompileNode(node.CatchBlock);
 				gen.Emit(ILOpCode.Leave, catchRegion.HandleEnd);
-				catchRegion.MarkHandleEnd(); //end catch
+				//catchRegion.MarkHandleEnd(); //end catch
+				gen.EndExceptionBlock();
 			}
 
 			if (hasFinallyBlock)
 			{
 				gen.Emit(ILOpCode.Leave, finallyRegion.HandleEnd);
-				finallyRegion.MarkHandleStart(); //finally
+				//finallyRegion.MarkHandleStart(); //finally
+				gen.BeginFinallyBlock();
 				CompileNode(node.CatchBlock);
 				gen.Emit(ILOpCode.Endfinally);
-				finallyRegion.MarkHandleEnd(); //end finally
+				//finallyRegion.MarkHandleEnd(); //end finally
+				gen.EndExceptionBlock();
 			}
 		}
 
@@ -1662,19 +1666,19 @@ namespace Jellequin.Compiler
 
 		void GenerateSourceConstant(TypeBuilder typBldr, AstNode node)
 		{
-			typBldr.DefineField("~~source", typeof(string), FieldAttributes.Private|FieldAttributes.Static|FieldAttributes.Literal).SetConstant(node.Context.StartLineNumber.ToString()+"-"+node.Context.EndLineNumber.ToString()+"-"+node.Context.ToString());
+			typBldr.DefineField("~~source", typeof(string), FieldAttributes.Private|FieldAttributes.Static|FieldAttributes.Literal|FieldAttributes.HasDefault).SetConstant(node.Context.StartLineNumber.ToString()+"-"+node.Context.EndLineNumber.ToString()+"-"+node.Context.ToString());
 		}
 
 		void AddDebuggerDisplayAttribute(TypeBuilder typBldr, string value, string type)
 		{
-			typBldr.AddCustomAttribute(typeof(DebuggerDisplayAttribute).GetConstructor(new[] { typeof(string) }), new object[] { value }, new[] { new CustomAttributeValue(false, "Type", type) });
+			typBldr.AddCustomAttribute(typeof(DebuggerDisplayAttribute).GetConstructor(new[] { typeof(string) }), new object[] { value }, new[] { (false, "Type", (object)type) });
 		}
 
 		void AddDebuggerTypeProxyAttribute(TypeBuilder typBldr)
 		{
 			//[DebuggerTypeProxy(typeof(JsObjectDebugView))]
-			typBldr.AddCustomAttribute(typeof(DebuggerTypeProxyAttribute).GetConstructor(new[] { typeof(Type) }),  new object[] { typeof(JsObjectDebugView).AssemblyQualifiedName }, new CustomAttributeValue[0]);
-			typBldr.AddCustomAttribute(typeof(DebuggerDisplayAttribute).GetConstructor(new[] { typeof(string) }), new object[] { "" }, new[] { new CustomAttributeValue(false, "Type", ""), new CustomAttributeValue(false, "Name", "") });
+			typBldr.AddCustomAttribute(typeof(DebuggerTypeProxyAttribute).GetConstructor(new[] { typeof(Type) }),  new object[] { typeof(JsObjectDebugView).AssemblyQualifiedName }, new (bool,string,object)[0]);
+			typBldr.AddCustomAttribute(typeof(DebuggerDisplayAttribute).GetConstructor(new[] { typeof(string) }), new object[] { "" }, new[] { (false, "Type", (object)""), (false, "Name", (object)"") });
 		}
 		#endregion compile node
 
@@ -1693,9 +1697,9 @@ namespace Jellequin.Compiler
 		VarInfo GenerateSimpleProperty(TypeBuilder typBldr, string propName)
 		{
 			FieldBuilder fieldBldr = typBldr.DefineField($"<{propName}>k__BackingField", _objectType, FieldAttributes.Private);
-			PropertyBuilder propBldr = typBldr.DefineProperty(propName, PropertyAttributes.None, _objectType, IType.EmptyTypes);
-			MethodBuilder varGetter = typBldr.DefineMethod("get_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, _objectType, IType.EmptyTypes);
-			MethodBuilder varSetter = typBldr.DefineMethod("set_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, typeof(void), new IType[] { _objectType });
+			PropertyBuilder propBldr = typBldr.DefineProperty(propName, PropertyAttributes.None, _objectType, Type.EmptyTypes);
+			MethodBuilder varGetter = typBldr.DefineMethod("get_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, _objectType, Type.EmptyTypes);
+			MethodBuilder varSetter = typBldr.DefineMethod("set_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, typeof(void), new Type[] { _objectType });
 			varSetter.DefineParameter(1, ParameterAttributes.None, "value");
 			propBldr.SetGetMethod(varGetter);
 			propBldr.SetSetMethod(varSetter);
@@ -1723,9 +1727,9 @@ namespace Jellequin.Compiler
 			//check the prop doesn't exist still
 
 			string propName = parProp.Name;
-			PropertyBuilder propBldr = typBldr.DefineProperty(propName, PropertyAttributes.None, _objectType, IType.EmptyTypes);
-			MethodBuilder varGetter = typBldr.DefineMethod("get_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, _objectType, IType.EmptyTypes);
-			MethodBuilder varSetter = typBldr.DefineMethod("set_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, typeof(void), new IType[] { _objectType });
+			PropertyBuilder propBldr = typBldr.DefineProperty(propName, PropertyAttributes.None, _objectType, Type.EmptyTypes);
+			MethodBuilder varGetter = typBldr.DefineMethod("get_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, _objectType, Type.EmptyTypes);
+			MethodBuilder varSetter = typBldr.DefineMethod("set_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, typeof(void), new Type[] { _objectType });
 			varSetter.DefineParameter(1, ParameterAttributes.None, "value");
 			propBldr.SetGetMethod(varGetter);
 			propBldr.SetSetMethod(varSetter);
@@ -1754,9 +1758,9 @@ namespace Jellequin.Compiler
 
 			//check the prop doesn't exist still
 
-			PropertyBuilder propBldr = typBldr.DefineProperty(propName, PropertyAttributes.None, _objectType, IType.EmptyTypes);
-			MethodBuilder varGetter = typBldr.DefineMethod("get_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, _objectType, IType.EmptyTypes);
-			MethodBuilder varSetter = typBldr.DefineMethod("set_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, typeof(void), new IType[] { _objectType });
+			PropertyBuilder propBldr = typBldr.DefineProperty(propName, PropertyAttributes.None, _objectType, Type.EmptyTypes);
+			MethodBuilder varGetter = typBldr.DefineMethod("get_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, _objectType, Type.EmptyTypes);
+			MethodBuilder varSetter = typBldr.DefineMethod("set_"+propName, MethodAttributes.Public|MethodAttributes.HideBySig|MethodAttributes.SpecialName, typeof(void), new Type[] { _objectType });
 			varSetter.DefineParameter(1, ParameterAttributes.None, "value");
 			propBldr.SetGetMethod(varGetter);
 			propBldr.SetSetMethod(varSetter);
@@ -2134,6 +2138,50 @@ namespace Jellequin.Compiler
 		#endregion helpers
 	}
 
+	static class BuildersCompat
+	{
+		#region ModuleBuilder
+		internal static TypeBuilder DefineType(this ModuleBuilder modBldr,string name,TypeAttributes attributes,Type baseType,Type[] interfaces)
+			=> modBldr.DefineType(name,"",attributes,baseType,interfaces);
+		internal static TypeBuilder DefineType(this ModuleBuilder modBldr,string name,TypeAttributes attributes,Type baseType)
+			=> DefineType(modBldr,name,attributes,baseType,Type.EmptyTypes);
+		#endregion ModuleBuilder
+
+		#region TypeBuilder
+		internal static ConstructorBuilder DefineConstructor(this TypeBuilder typBldr,MethodAttributes attributes,CallingConventions callingConventions,Type[] parameterTypes)
+			=> typBldr.DefineConstructor(ConstructorInfo.ConstructorName,attributes,callingConventions,parameterTypes);
+
+		internal static MethodBuilder DefineMethod(this TypeBuilder typBldr,string name,MethodAttributes attributes,Type returnType,Type[] parameterTypes)
+		{
+			MethodBuilder res = typBldr.DefineMethod(name,attributes,CallingConventions.Standard);
+			res.SetImplementationFlags(MethodImplAttributes.IL);
+			res.SetReturnType(returnType);
+			res.SetParameters(parameterTypes);
+			return res;
+		}
+
+		internal static void AddCustomAttribute(this TypeBuilder typBldr,ConstructorInfo ci,object[] arguments,(bool IsField,string Name,object Value)[] props)
+		{
+			Type declType = ci.DeclaringType;
+			typBldr.SetCustomAttribute(new CustomAttributeBuilder(ci,arguments.Select(x => new CustomAttributeTypedArgument(x)).ToArray(),
+				props.Select(x=>new CustomAttributeNamedArgument(declType.GetMember(x.Name).Single(),x.Value)).ToArray()
+				));
+		}
+
+		internal static Type CreateType(this TypeBuilder typBldr)
+			=> typBldr;
+		#endregion TypeBuilder
+
+		#region ILGenerator
+		internal static void MarkSequencePoint(this ILGenerator gen,SymbolWriter symbolWriter, int startLineNumber, int startColumn, int endLineNumber, int endColumn)
+			=> gen.MarkSequencePoint(symbolWriter, startLineNumber, (ushort)startColumn, endLineNumber, (ushort)endColumn);
+
+		internal static LocalBuilder DeclareLocal(this ILGenerator gen,Type type)
+			=> gen.DeclareLocal(type,false);
+		#endregion ILGenerator
+	}
+
+
 	#region CompilerOptions
 	public class CompilerOptions
 	{
@@ -2141,16 +2189,7 @@ namespace Jellequin.Compiler
 		public RuntimeMethodsUsage RuntimeMethodsUsage { get; set; }
 		//public Type BaseClass { get; set; } //mustn't be sealed - really?
 		public bool DontUseDynamicJsMembers { get; set; }
-		public Stream Icon { get; set; }
-
-		public DebugOptions Debug { get; set; }
-	}
-
-	public class DebugOptions
-	{
 		public bool Debug { get; set; }
-		public bool EmbedSourceCode { get; set; }
-		public Stream Pdb { get; set; }
 	}
 
 	public enum RuntimeMethodsUsage { Call, Copy };

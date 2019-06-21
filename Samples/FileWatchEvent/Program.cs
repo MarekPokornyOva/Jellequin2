@@ -4,6 +4,7 @@
 
 #region using
 using Jellequin.Compiler;
+using Jellequin.Reflection.Emit;
 using Jellequin.Runtime;
 using System;
 using System.IO;
@@ -53,13 +54,14 @@ Console.ReadKey();
 			using (MemoryStream dll = new MemoryStream())
 			using (MemoryStream pdb = new MemoryStream())
 			{
-				Compiler.Compile(jellCode, dll, new AssemblyName("FileWatchEventDemo"), new CompilerOptions()
+				Compiler.Compile(jellCode.GetText(), new AssemblyName("FileWatchEventDemo"), new CompilerOptions()
 				{
 					FileKind = FileKind.Dll,
 					RuntimeMethodsUsage = RuntimeMethodsUsage.Call,
 					DontUseDynamicJsMembers = true,
-					Debug = new DebugOptions { Debug = true, EmbedSourceCode = true, Pdb = pdb }
-				});
+					Debug = true
+				})
+				.Save(dll,new SaveOptions { Symbols=new SymbolsSaveOptions { Code=jellCode,EmbedSource=true,Pdb=pdb } });
 
 				dll.Position = 0;
 				pdb.Position = 0;

@@ -4,6 +4,7 @@
 
 #region using
 using Jellequin.Compiler;
+using Jellequin.Reflection.Emit;
 using Jellequin.Runtime;
 using System;
 using System.Collections.Generic;
@@ -49,15 +50,16 @@ namespace SortFunction01
 			using (MemoryStream dll = new MemoryStream())
 			using (MemoryStream pdb = new MemoryStream())
 			{
-				Compiler.Compile(jellCode, dll,
+				Compiler.Compile(jellCode.GetText(), 
 					new AssemblyName("CompareTest") { Version = new Version(1, 1, 5, 1) },
 					new CompilerOptions()
 					{
 						FileKind = FileKind.Dll,
 						RuntimeMethodsUsage = RuntimeMethodsUsage.Call,
 						DontUseDynamicJsMembers = true,
-						Debug = new DebugOptions { Debug = true, EmbedSourceCode = jellCode is StringSource, Pdb = pdb }
-					});
+						Debug = true
+					})
+					.Save(dll,new SaveOptions { Symbols=new SymbolsSaveOptions { Code=jellCode,EmbedSource=false,Pdb=pdb } });
 
 				dll.Position = 0;
 				pdb.Position = 0;

@@ -4,6 +4,7 @@
 
 #region using
 using Jellequin.Compiler;
+using Jellequin.Reflection.Emit;
 using Jellequin.Runtime;
 using System;
 using System.Collections;
@@ -41,14 +42,14 @@ namespace Jquarium
 			using (Stream pdb = new MemoryStream())
 			//using (Stream icon = File.OpenRead(GetFilePath(@"..\..\VsExtension\JellequinVs2017.ProjectType\Jellequin.ico")))
 			{
-				Compiler.Compile(code, dll, new AssemblyName("JquariumJell") { Version = new Version(1, 2, 3, 4) }, new CompilerOptions
+				Compiler.Compile(code.GetText(),new AssemblyName("JquariumJell") { Version=new Version(1,2,3,4) },new CompilerOptions
 				{
 					FileKind = FileKind.ConsoleExe,
 					RuntimeMethodsUsage = RuntimeMethodsUsage.Call,
 					//DontUseDynamicJsMembers = true,
-					//Icon = icon,
-					Debug = new DebugOptions { Debug = debug, EmbedSourceCode = false, Pdb = pdb }
-				});
+					Debug=debug
+				}).Save(dll,new SaveOptions { /*Icon=icon,*/ Symbols=new SymbolsSaveOptions { Code=code,EmbedSource=false,Pdb=pdb } });
+
 
 				//Generated assembly and debug symbols might be stored to files...
 				string basePath = GetFilePath(Path.Combine("out", "jquarium."));
