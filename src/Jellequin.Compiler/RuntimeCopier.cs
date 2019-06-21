@@ -20,7 +20,7 @@ namespace Jellequin.Compiler
 
 		internal RuntimeCopier(Stream asmToCopy)
 		{
-			_pEReader = new PEReader(asmToCopy);
+			_pEReader = new PEReader(asmToCopy,PEStreamOptions.LeaveOpen);
 		}
 
 		public void Dispose()

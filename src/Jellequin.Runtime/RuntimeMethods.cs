@@ -1943,7 +1943,7 @@ namespace Jellequin.Runtime
 			return result;
 		}
 
-		private static Func<object> CreateGetMethodWithTarget(MemberInfo member, object target)
+		internal static Func<object> CreateGetMethodWithTarget(MemberInfo member, object target)
 		{
 			return (Func<object>)CreateGetMethod(member).CreateDelegate(typeof(Func<object>), target);
 		}
@@ -1967,7 +1967,6 @@ namespace Jellequin.Runtime
 				return; //all work has been done on Add
 
 			object objectVarWrap = GetJsWrapper(objectVar);
-			//object objectVarWrap = objectVar;
 
 			Type objectVarType;
 			MemberInfo[] mis;
@@ -2659,9 +2658,7 @@ namespace Jellequin.Runtime
 		[DebuggerHidden]
 		//#endif
 		public static object DirectInvoke(this Delegate del, object[] args)
-		{
-			return DirectInvoke(del.Method, del.Target, args);
-		}
+			=> DirectInvoke(del.Method, del.Target, args);
 
 		public static object DirectInvoke(MethodBase method, object target, object[] args)
 		{
@@ -3296,8 +3293,9 @@ namespace Jellequin.Runtime
 		{
 			if (_parScopeSet)
 				return _parScope;
-			_parScope = this.GetType().GetField("~~parScope", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(this) as IJsObject;
-			_parScopeSet = true;
+			FieldInfo fi=this.GetType().GetField("~~parScope",BindingFlags.NonPublic|BindingFlags.Instance);
+			_parScope=fi==null?null:RuntimeMethods.CreateGetMethodWithTarget(fi,this)() as IJsObject;
+			_parScopeSet=true;
 			return _parScope;
 		}
 	}
