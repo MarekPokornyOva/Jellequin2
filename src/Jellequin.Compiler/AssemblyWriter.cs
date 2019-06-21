@@ -56,7 +56,8 @@ namespace Jellequin.Compiler
 			_methodBodies=new MethodBodyStreamEncoder(_ilStream);
 
 			if (_copyRuntime)
-				new RuntimeCopier(runtimeAsmToCopy).Copy(_tablesAndHeaps, _methodBodies);
+				using (RuntimeCopier rc = new RuntimeCopier(runtimeAsmToCopy))
+					rc.Copy(_tablesAndHeaps,_methodBodies);
 
 			_systemRuntimeAssemblyReferenceHandle = GetAssemblyReference(typeof(object).Assembly); //_tablesAndHeaps.AddAssemblyReference(_tablesAndHeaps.GetOrAddString("System.Runtime"), new Version(4, 2, 0, 0), default(StringHandle), _tablesAndHeaps.GetOrAddBlob(ImmutableArray.Create<byte>(0x00, 0x24, 0x00, 0x00, 0x04, 0x80, 0x00, 0x00, 0x94, 0x00, 0x00, 0x00, 0x06, 0x02, 0x00, 0x00, 0x00, 0x24, 0x00, 0x00, 0x52, 0x53, 0x41, 0x31, 0x00, 0x04, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x07, 0xd1, 0xfa, 0x57, 0xc4, 0xae, 0xd9, 0xf0, 0xa3, 0x2e, 0x84, 0xaa, 0x0f, 0xae, 0xfd, 0x0d, 0xe9, 0xe8, 0xfd, 0x6a, 0xec, 0x8f, 0x87, 0xfb, 0x03, 0x76, 0x6c, 0x83, 0x4c, 0x99, 0x92, 0x1e, 0xb2, 0x3b, 0xe7, 0x9a, 0xd9, 0xd5, 0xdc, 0xc1, 0xdd, 0x9a, 0xd2, 0x36, 0x13, 0x21, 0x02, 0x90, 0x0b, 0x72, 0x3c, 0xf9, 0x80, 0x95, 0x7f, 0xc4, 0xe1, 0x77, 0x10, 0x8f, 0xc6, 0x07, 0x77, 0x4f, 0x29, 0xe8, 0x32, 0x0e, 0x92, 0xea, 0x05, 0xec, 0xe4, 0xe8, 0x21, 0xc0, 0xa5, 0xef, 0xe8, 0xf1, 0x64, 0x5c, 0x4c, 0x0c, 0x93, 0xc1, 0xab, 0x99, 0x28, 0x5d, 0x62, 0x2c, 0xaa, 0x65, 0x2c, 0x1d, 0xfa, 0xd6, 0x3d, 0x74, 0x5d, 0x6f, 0x2d, 0xe5, 0xf1, 0x7e, 0x5e, 0xaf, 0x0f, 0xc4, 0x96, 0x3d, 0x26, 0x1c, 0x8a, 0x12, 0x43, 0x65, 0x18, 0x20, 0x6d, 0xc0, 0x93, 0x34, 0x4d, 0x5a, 0xd2, 0x93)), AssemblyFlags.PublicKey, _tablesAndHeaps.GetOrAddBlob(BitConverter.GetBytes((int)AssemblyHashAlgorithm.Sha1)));
 
@@ -64,20 +65,34 @@ namespace Jellequin.Compiler
 			if (debug)
 			{
 				//pdb
-				_pdbTablesAndHeaps = new MetadataBuilder();
+				/*_pdbTablesAndHeaps = new MetadataBuilder();
 				BlobBuilder sourceCodeBytes = new BlobBuilder();
+				byte[] sourceCodeBytesOrg = code.GetBytes();
 				sourceCodeBytes.WriteInt32(0);
-				sourceCodeBytes.WriteBytes(code.GetBytes());
+				sourceCodeBytes.WriteBytes(sourceCodeBytesOrg);
 
 				_docPdb = _pdbTablesAndHeaps.AddDocument(_pdbTablesAndHeaps.GetOrAddDocumentName(code.GetEmbedFilename()),
-						_pdbTablesAndHeaps.GetOrAddGuid(HashAlgorithmGuids.Sha1), _pdbTablesAndHeaps.GetOrAddBlob(CalculateChecksum(sourceCodeBytes.ToArray(sizeof(int), sourceCodeBytes.Count - sizeof(int)), SourceHashAlgorithm.Sha1)),
+						_pdbTablesAndHeaps.GetOrAddGuid(HashAlgorithmGuids.Sha1), _pdbTablesAndHeaps.GetOrAddBlob(CalculateChecksum(sourceCodeBytesOrg, SourceHashAlgorithm.Sha1)),
 						_pdbTablesAndHeaps.GetOrAddGuid(new Guid("3f5162f8-07c6-11d3-9053-00c04fa302a1")));
 
 				if (debugOptions.EmbedSourceCode)
 					_pdbTablesAndHeaps.AddCustomDebugInformation(
 						parent: _docPdb,
 						kind: _pdbTablesAndHeaps.GetOrAddGuid(Microsoft.CodeAnalysis.Debugging.PortableCustomDebugInfoKinds.EmbeddedSource),
-						value: _pdbTablesAndHeaps.GetOrAddBlob(sourceCodeBytes));
+						value: _pdbTablesAndHeaps.GetOrAddBlob(sourceCodeBytes));*/
+
+				_pdbTablesAndHeaps=new MetadataBuilder();
+				EmbeddedText et = EmbeddedText.FromBytes(code.GetEmbedFilename(),new ArraySegment<byte>(code.GetBytes()),SourceHashAlgorithm.Sha1);
+
+				_docPdb=_pdbTablesAndHeaps.AddDocument(_pdbTablesAndHeaps.GetOrAddDocumentName(et.FilePath),
+					_pdbTablesAndHeaps.GetOrAddGuid(HashAlgorithmGuids.Sha1),_pdbTablesAndHeaps.GetOrAddBlob(et.Checksum),
+					_pdbTablesAndHeaps.GetOrAddGuid(new Guid("3f5162f8-07c6-11d3-9053-00c04fa302a1")));
+
+				if (debugOptions.EmbedSourceCode)
+					_pdbTablesAndHeaps.AddCustomDebugInformation(
+						parent: _docPdb,
+						kind: _pdbTablesAndHeaps.GetOrAddGuid(Microsoft.CodeAnalysis.Debugging.PortableCustomDebugInfoKinds.EmbeddedSource),
+						value: _pdbTablesAndHeaps.GetOrAddBlob(et.Blob));
 			}
 
 			//write
@@ -891,7 +906,8 @@ namespace Jellequin.Compiler
 
 		static byte[] CalculateChecksum(byte[] data, SourceHashAlgorithm algorithmId)
 		{
-			return GetAlgorithm(algorithmId).ComputeHash(data);
+			using (HashAlgorithm ha = GetAlgorithm(algorithmId))
+				return ha.ComputeHash(data);
 		}
 
 		static HashAlgorithm GetAlgorithm(SourceHashAlgorithm algorithmId)
