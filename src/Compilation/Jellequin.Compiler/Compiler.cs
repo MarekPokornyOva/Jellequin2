@@ -1587,22 +1587,15 @@ namespace Jellequin.Compiler
 			ExceptionRegionInfo catchRegion,finallyRegion;
 			catchRegion=finallyRegion=null;
 			if (hasFinallyBlock)
-			{
-				finallyRegion=gen.AddFinallyRegion();
-				//finallyRegion.MarkTryStart(); //try
-			}
+				finallyRegion=gen.BeginExceptionBlock();
 			if (hasCatchBlock)
-			{
-				catchRegion=gen.AddCatchRegion(typeof(Exception));
-				//catchRegion.MarkTryStart(); //try
-			}
+				catchRegion=gen.BeginExceptionBlock();
 
 			CompileNode(node.TryBlock);
 
 			if (hasCatchBlock)
 			{
 				gen.Emit(ILOpCode.Leave, catchRegion.HandleEnd);
-				//catchRegion.MarkHandleStart(); //catch
 				gen.BeginCatchBlock(typeof(Exception));
 
 				BindingIdentifier exceptionVar = (BindingIdentifier)node.CatchParameter?.Binding;
@@ -1619,18 +1612,15 @@ namespace Jellequin.Compiler
 
 				CompileNode(node.CatchBlock);
 				gen.Emit(ILOpCode.Leave, catchRegion.HandleEnd);
-				//catchRegion.MarkHandleEnd(); //end catch
 				gen.EndExceptionBlock();
 			}
 
 			if (hasFinallyBlock)
 			{
 				gen.Emit(ILOpCode.Leave, finallyRegion.HandleEnd);
-				//finallyRegion.MarkHandleStart(); //finally
 				gen.BeginFinallyBlock();
-				CompileNode(node.CatchBlock);
+				CompileNode(node.FinallyBlock);
 				gen.Emit(ILOpCode.Endfinally);
-				//finallyRegion.MarkHandleEnd(); //end finally
 				gen.EndExceptionBlock();
 			}
 		}
