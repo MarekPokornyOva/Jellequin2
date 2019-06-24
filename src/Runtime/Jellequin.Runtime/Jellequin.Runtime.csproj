@@ -11,13 +11,9 @@
     <Company>MpSoft</Company>
     <Product>Jellequin</Product>
     <Description>Jellequin is EcmaScript compiler to CLR (.NET) assembly with debug ability. Runtime allows to launch/use an assembly in hosting application.</Description>
-    <Version>1.0.1</Version>
-    <PackageReleaseNotes>- implement sort function on array.
-- implement enumeration on string.
-- implement ES function creation.
-- improve looking for members on the real .NET type.
-- improve value getting from .NET type.
-</PackageReleaseNotes>
+    <Version>1.0.2</Version>
+    <PackageReleaseNotes>- Minor tweaks.
+- Improve native callback functions.</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>

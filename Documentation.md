@@ -10,10 +10,15 @@
 * DontUseDynamicJsMembers
 	- false - supports dynamic members for ES6 compatibility.
 	- true - uses static members (implemented as standard .NET class with standard members).
-* Icon - icon built into generated assembly (resources).
-* Debug - see DebugOptions below.
+* Debug - if to generate symbols (debug) information
 
-##### DebugOptions
-* Debug - if to generate output PDB.
-* EmbedSourceCode - if to embed source code to output PDB.
+### SaveOptions
+* Symbols - see SymbolsSaveOptions below.
+* Icon - icon built into generated assembly (resources).
+* AssemblyAttributes - assembly custom attributes.
+
+##### SymbolsSaveOptions
+* EmbedSource - if to embed source code to output PDB.
 * Pdb - PDB output stream.
+* HashAlgorithm - hash algorithm used for embedded source code.
+* Code - source code detail information provider.

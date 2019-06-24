@@ -1,7 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <PackageTags>EcmaScript JavaScript Compiler</PackageTags>
     <RepositoryUrl>https://github.com/MarekPokornyOva/Jellequin2</RepositoryUrl>
     <PackageProjectUrl>https://github.com/MarekPokornyOva/Jellequin2</PackageProjectUrl>
@@ -10,13 +11,9 @@
     <Authors>Marek Pokorný</Authors>
     <Product>Jellequin</Product>
     <Description>Jellequin is EcmaScript compiler to CLR (.NET) assembly with debug ability. Compiler allows to compile source ES code to an assembly.</Description>
-    <Version>1.0.1</Version>
-    <PackageReleaseNotes>- add "this." support.
-- fix literal template compilation.</PackageReleaseNotes>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <LangVersion>latest</LangVersion>
+    <Version>1.1.0</Version>
+    <PackageReleaseNotes>- Improve embeded source code writing.
+- Fix BitwiseAndAssign, PlusAssign, MinusAssign and UnaryOperator generation.</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
