@@ -225,8 +225,8 @@ namespace Jellequin.Reflection.Emit
 				if (type.IsNested)
 					_tablesAndHeaps.AddNestedType(typeDef,_definedTypes[(TypeBuilder)type.DeclaringType].TypeHandle);
 
-				foreach (Type interfaceType in type.GetInterfaces())
-					_tablesAndHeaps.AddInterfaceImplementation(typeDef,GetTypeHandle(interfaceType));
+				foreach (EntityHandle interfaceTypeHandle in type.GetInterfaces().Select(GetTypeHandle).OrderBy(x=>MetadataTokens.GetRowNumber(x)))
+					_tablesAndHeaps.AddInterfaceImplementation(typeDef,interfaceTypeHandle);
 
 				AddCustomAttributes(typeDef,type);
 
@@ -373,7 +373,8 @@ namespace Jellequin.Reflection.Emit
 				_seqPoints.Add((new SequencePoint[0], 0));
 				return (-1, 0);
 			}
-			IList<LocalBuilder> localVariables = methodBody.ILGenerator.Locals;
+
+			IReadOnlyCollection<LocalBuilder> localVariables = methodBody.ILGenerator.Locals;
 			bool hasLocals = localVariables.Count!=0;
 
 			StandaloneSignatureHandle localVariablesSignature;
