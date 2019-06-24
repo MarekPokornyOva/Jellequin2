@@ -1,0 +1,57 @@
+﻿import consoleDll from "System.Console, Version=4.1.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a";
+import httpListenerDll from "System.Net.HttpListener, Version=4.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51";
+import coreLibDll from "System.Private.CoreLib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e";
+import runtimeExtDll from "System.Runtime.Extensions, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a";
+var Console=consoleDll.System.Console;
+var ConsoleKey=consoleDll.System.ConsoleKey;
+var HttpListener=httpListenerDll.System.Net.HttpListener;
+var AsyncCallback=coreLibDll.System.AsyncCallback;
+var StreamWriter=runtimeExtDll.System.IO.StreamWriter;
+
+var listener=new HttpListener();
+
+function BeginGetContext()
+{
+	listener.BeginGetContext(new AsyncCallback(function(ar)
+	{
+		var ctx = listener.EndGetContext(ar);
+
+		var qs=ctx.Request.QueryString;
+		var name=qs["name"];
+		if (name==null)
+			name="Fantomas";
+
+		Console.WriteLine("Incomming message from "+name);
+
+		ctx.Response.StatusCode=200;
+		/*var sw=new StreamWriter(ctx.Response.OutputStream);
+		sw.Write("Hello "+name+"!");
+		sw.Dispose();*/
+
+		var sw=new StreamWriter(ctx.Response.OutputStream);
+		try
+		{
+			sw.Write("Hello "+name+"!");
+		}
+		finally
+		{
+			sw.Dispose();
+		}
+
+		BeginGetContext();
+	}),null);
+}
+
+var listeningUrl = "http://localhost:8080/";
+listener.Prefixes.Add(listeningUrl);
+Console.WriteLine("Listening on "+listeningUrl+" ...");
+Console.WriteLine("Send me a request - e.g. "+listeningUrl+"?name=world");
+listener.Start();
+
+BeginGetContext();
+
+ConsoleKeyInfo cki;
+while (!(((cki=Console.ReadKey()).Key==ConsoleKey.Escape)||(cki.Key==ConsoleKey.Enter))) ;
+
+listener.Stop();
+Console.WriteLine("Bye!");

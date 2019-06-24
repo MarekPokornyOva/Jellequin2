@@ -50,6 +50,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jellequin.Reflection.Emit.S
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jellequin.Reflection.AssemblyCopier", "src\Reflection\Jellequin.Reflection.AssemblyCopier\Jellequin.Reflection.AssemblyCopier.csproj", "{0856E6B2-FCF6-48CE-A8F4-5E55ECE09C0C}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SimpleHttpServer", "Samples\SimpleHttpServer\SimpleHttpServer.csproj", "{0C3F9B33-3F11-411A-B0B1-3C7D87531CC9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -112,6 +114,10 @@ Global
 		{0856E6B2-FCF6-48CE-A8F4-5E55ECE09C0C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0856E6B2-FCF6-48CE-A8F4-5E55ECE09C0C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0856E6B2-FCF6-48CE-A8F4-5E55ECE09C0C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0C3F9B33-3F11-411A-B0B1-3C7D87531CC9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C3F9B33-3F11-411A-B0B1-3C7D87531CC9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C3F9B33-3F11-411A-B0B1-3C7D87531CC9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C3F9B33-3F11-411A-B0B1-3C7D87531CC9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -134,6 +140,7 @@ Global
 		{7D335AA9-FC3A-42FC-86DF-413F8B511F53} = {C1054724-1F05-48E1-AE92-3F21078B3717}
 		{A04B51C2-49DB-44EF-9F1B-808E91B89CAB} = {C1054724-1F05-48E1-AE92-3F21078B3717}
 		{0856E6B2-FCF6-48CE-A8F4-5E55ECE09C0C} = {C1054724-1F05-48E1-AE92-3F21078B3717}
+		{0C3F9B33-3F11-411A-B0B1-3C7D87531CC9} = {93DF685D-8187-4E87-B7B6-2407B61D520C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {52921DCD-4695-4E70-B3D8-16D65EC886FF}

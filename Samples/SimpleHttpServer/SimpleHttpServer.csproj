@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="out\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Compilation\Jellequin.Compiler\Jellequin.Compiler.csproj" />
+    <ProjectReference Include="..\..\src\Runtime\Jellequin.Runtime\Jellequin.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>
