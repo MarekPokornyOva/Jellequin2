@@ -9,12 +9,18 @@ namespace Jellequin.Reflection.Emit
 	{
 		public ILOpCode OpCode { get; }
 		public (string DocumentName, int StartLineNumber, ushort StartColumn, int EndLineNumber, ushort EndColumn) SourceLocation { get; set; }
-		public List<Label> Labels { get; } = new List<Label>();
+		List<Label> _labels = new List<Label>();
+		public IReadOnlyCollection<Label> Labels => _labels.AsReadOnly();
 
 		internal Instruction(ILOpCode opCode)
 		{
 			OpCode=opCode;
 		}
+
+		internal void AddLabel(Label label)
+			=> _labels.Add(label);
+		internal void AddLabels(IEnumerable<Label> labels)
+			=> _labels.AddRange(labels);
 	}
 
 	public class Instruction<TData>:Instruction

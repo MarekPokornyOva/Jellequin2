@@ -12,20 +12,13 @@ namespace Jellequin.Reflection.Emit
 			TryStart=iLGenerator.DefineLabel();
 			HandleStart=iLGenerator.DefineLabel();
 			HandleEnd=iLGenerator.DefineLabel();
-			MarkTryStart();
-		}
-
-		internal ExceptionRegionInfo(ILGenerator iLGenerator,bool isCatch,Type exceptionType):this(iLGenerator)
-		{
-			IsCatch=isCatch;
-			ExceptionType=exceptionType;
 		}
 
 		readonly ILGenerator ILGenerator;
-		public Label TryStart { get; }
-		public Label HandleStart { get; }
-		public Label HandleEnd { get; }
-		public bool IsCatch { get; private set; }
+		public Label TryStart { get; private set; }
+		public Label HandleStart { get; private set; }
+		public Label HandleEnd { get; private set; }
+		public bool IsCatch => ExceptionType!=null;
 		public Type ExceptionType { get; private set; }
 
 
@@ -34,7 +27,6 @@ namespace Jellequin.Reflection.Emit
 
 		internal void MarkCatchStart(Type exceptionType)
 		{
-			IsCatch=true;
 			ExceptionType=exceptionType;
 			ILGenerator.MarkLabel(HandleStart);
 		}

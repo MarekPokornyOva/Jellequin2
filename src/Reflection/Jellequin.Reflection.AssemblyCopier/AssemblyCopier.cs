@@ -289,7 +289,7 @@ namespace Jellequin.Reflection.Emit
 
 				foreach (ExceptionHandlingClause item in tryBlocks)
 					if (item.TryOffset==instruction.Address)
-						gen.BeginExceptionBlock();
+						gen.BeginExceptionBlock(); //try
 				if (instruction.InstructionIndex!=0)
 				{
 					ILOpCode prevOpcode = instructions[instruction.InstructionIndex-1].Op;
@@ -298,15 +298,17 @@ namespace Jellequin.Reflection.Emit
 						foreach (ExceptionHandlingClause item in tryBlocks)
 							if (item.HandlerOffset==instruction.Address)
 								if ((item.Flags&ExceptionHandlingClauseOptions.Finally)==ExceptionHandlingClauseOptions.Finally)
-									gen.BeginFinallyBlock();
+									gen.BeginFinallyBlock(); //finally
 								else
-									gen.BeginCatchBlock(item.CatchType);
+									gen.BeginCatchBlock(item.CatchType); //catch
+							else if (item.HandlerOffset+item.HandlerLength==instruction.Address)
+								gen.EndExceptionBlock(); //end catch
 					}
 					else if (prevOpcode==ILOpCode.Endfinally)
 					{
 						foreach (ExceptionHandlingClause item in tryBlocks)
 							if (item.HandlerOffset+item.HandlerLength==instruction.Address)
-								gen.EndExceptionBlock();
+								gen.EndExceptionBlock(); //end finally
 					}
 				}
 
