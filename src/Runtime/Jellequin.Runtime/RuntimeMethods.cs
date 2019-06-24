@@ -1864,6 +1864,16 @@ namespace Jellequin.Runtime
 			switch (GetMemberInternal(objectVar, memberName, out object resultObject, out MemberInfo mmi, out object objectVarWrap, out Type objectVarType))
 			{
 				case 0:
+					try
+					{
+						//parser doesn't know if it's real member or array item access -> let's try to handle it as array.
+						return GetArrayItem(objectVar,memberName);
+					}
+					catch
+					{
+						//it's not handleable member, neither handleable array, I'm giving up.
+					}
+
 					throw new RuntimeException(RuntimeExceptionReason.NoMemberOnExternalVariable, (objectVar is StaticObject ? objectVarType : objectVar.GetType()).Name, memberName);
 				case 1:
 					return resultObject;
@@ -2118,17 +2128,18 @@ namespace Jellequin.Runtime
 			if (RuntimeMethodsExtender.ArrayGetItem(array, index, out object result))
 				return result;
 
-			Type arrayType = array.GetType();
-			if ((typeof(IList).IsAssignableFrom(arrayType)) && (TypeConverter.ConvertTryConvert(ref index, typeof(int))))
-				return ((IList)array)[(int)index];
-			if (typeof(IDictionary).IsAssignableFrom(arrayType))
-				return ((IDictionary)array)[index];
+			if ((array is IList ilist) && (TypeConverter.ConvertTryConvert(ref index, typeof(int))))
+				return ilist[(int)index];
+			if (array is IDictionary dict)
+				return dict[index];
+			if ((array is System.Collections.Specialized.NameValueCollection nocb)&&(TypeConverter.ConvertTryConvert(ref index,typeof(string))))
+				return nocb[(string)index];
 			if (index != null)
 			{
 				object objectVar = array.GetType();
 				Type indexType = index.GetType();
 
-				PropertyInfo[] pis = Array.FindAll(arrayType.GetProperties(BindingFlags.Public | BindingFlags.Instance), item => item.Name == "Item");
+				PropertyInfo[] pis = Array.FindAll(array.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance), item => item.Name == "Item");
 				foreach (PropertyInfo item in pis)
 				{
 					Type t = item.GetIndexParameters()[0].ParameterType;
@@ -2436,26 +2447,8 @@ namespace Jellequin.Runtime
 		#region dynam call
 		public static object CreateInstance(object type, object[] args)
 		{
-			if (type is StaticObject so)
-			{
-				int argsLength = args.Length;
-				Type typeReal=so.Type;
-				ConstructorInfo ci=FindMethod(typeReal.GetConstructors(BindingFlags.Public|BindingFlags.Instance).Select(x=>(x,x.GetParameters())).ToArray(),args);
-				if (ci==null)
-				{
-					if ((typeof(MulticastDelegate).IsAssignableFrom(typeReal)) && (argsLength>0) && (args[0] is IJsFunction jsFunc))
-					{
-						ci = typeReal.GetConstructors(BindingFlags.Public|BindingFlags.Instance).FirstOrDefault(x => x.GetParameters().Length==2);
-						return ci.DirectInvoke(new object[] { jsFunc,jsFunc.GetType().GetMethod(nameof(IJsFunction.Invoke)).MethodHandle.GetFunctionPointer() });
-					}
-
-					throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod);
-				}
-				return ci.DirectInvoke(args);
-			}
-
-			if (type is IJsFunction jsFun)
-				return jsFun.Instantiate(args);
+			if (type is IInstantiable insta)
+				return insta.Instantiate(args);
 
 			//throw new NotImplementedException();
 			throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod);
@@ -2604,7 +2597,7 @@ namespace Jellequin.Runtime
 		#endregion dynam call
 
 		#region FindMethod
-		internal static T FindMethod<T>(IEnumerable<(T Method, ParameterInfo[] Parameters)> methods,object[] arguments) where T : class
+		internal static T FindMethod<T>(IEnumerable<(T Method, ParameterInfo[] Parameters)> methods,object[] arguments) where T : MethodBase
 		{
 			int argsCount = arguments.Length;
 			Type[] valTypes = arguments.Select(x => x?.GetType()).ToArray();
@@ -2798,14 +2791,40 @@ namespace Jellequin.Runtime
 		internal string _name;
 	}
 
-	public class StaticObject
+	public class StaticObject:IInstantiable
 	{
 		public Type Type;
+
+		public object Instantiate(object[] arguments)
+		{
+			int argsLength = arguments.Length;
+			ConstructorInfo ci = RuntimeMethods.FindMethod(Type.GetConstructors(BindingFlags.Public|BindingFlags.Instance).Select(x => (x, x.GetParameters())).ToArray(),arguments);
+			if (ci==null)
+			{
+				if ((typeof(MulticastDelegate).IsAssignableFrom(Type))&&(argsLength>0)&&(arguments[0] is IInvokable invok))
+				{
+					ci=Type.GetConstructors(BindingFlags.Public|BindingFlags.Instance).FirstOrDefault(x => x.GetParameters().Length==2);
+					MethodInfo miInvoke = Type.GetMethod("Invoke");
+					Type[] invokeParameterTypes = miInvoke.GetParameters().Select(x=>x.ParameterType).ToArray();
+					MethodInfo invokMethod = invok.GetType().GetMethod(nameof(IInvokable.Invoke),new Type[] { typeof(object[]) });
+					if ((invokeParameterTypes.Length==1)&&(invokeParameterTypes[0]==typeof(object[])))
+						return ci.DirectInvoke(new object[] { invok,invokMethod.MethodHandle.GetFunctionPointer() });
+					else
+					{
+						Delegate del =IInvokableExtensions.CreateNativeDelegate(miInvoke,invok);
+						return ci.DirectInvoke(new object[] { del.Target,del.Method.MethodHandle.GetFunctionPointer() });
+					}
+				}
+
+				throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod);
+			}
+			return ci.DirectInvoke(arguments);
+		}
 	}
 
-/*#if !DebugRuntime
-	[DebuggerStepThrough]
-#endif*/
+	/*#if !DebugRuntime
+		[DebuggerStepThrough]
+	#endif*/
 	public class ExternalMethodInfo:IInvokable
 	{
 		internal object Target;
@@ -2982,11 +3001,17 @@ namespace Jellequin.Runtime
 	public interface IInvokable
 	{
 		object Invoke(object[] arguments);
-    }
+   }
+
+	public interface IInstantiable
+	{
+		object Instantiate(object[] arguments);
+	}
 
 	#region IInvokableExtensions.ToFunc
 	public static class IInvokableExtensions
 	{
+		#region ToFunc
 		public static Func<TResult> ToFunc<TResult>(this IInvokable invokable)
 		{
 			Func<object[], object> f = GetInvokeFunc(invokable);
@@ -3052,7 +3077,77 @@ namespace Jellequin.Runtime
 			Func<object[], object> f = GetInvokeFunc(invokable);
 			return (p1, p2, p3, p4, p5, p6, p7, p8, p9, p10) => (TResult)f(new object[] { p1, p2, p3, p4, p5, p6, p7, p8, p9, p10 });
 		}
+		#endregion ToFunc
 
+		#region ToAction
+		public static Action ToAction(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return () => f(new object[0]);
+		}
+
+		public static Action<T> ToAction<T>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1) => f(new object[] { p1 });
+		}
+
+		public static Action<T1,T2> ToAction<T1, T2>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2) => f(new object[] { p1,p2 });
+		}
+
+		public static Action<T1,T2,T3> ToAction<T1, T2, T3>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2,p3) => f(new object[] { p1,p2,p3 });
+		}
+
+		public static Action<T1,T2,T3,T4> ToAction<T1, T2, T3, T4>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2,p3,p4) => f(new object[] { p1,p2,p3,p4 });
+		}
+
+		public static Action<T1,T2,T3,T4,T5> ToAction<T1, T2, T3, T4, T5>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2,p3,p4,p5) => f(new object[] { p1,p2,p3,p4,p5 });
+		}
+
+		public static Action<T1,T2,T3,T4,T5,T6> ToAction<T1, T2, T3, T4, T5, T6>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2,p3,p4,p5,p6) => f(new object[] { p1,p2,p3,p4,p5,p6 });
+		}
+
+		public static Action<T1,T2,T3,T4,T5,T6,T7> ToAction<T1, T2, T3, T4, T5, T6, T7>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2,p3,p4,p5,p6,p7) => f(new object[] { p1,p2,p3,p4,p5,p6,p7 });
+		}
+
+		public static Action<T1,T2,T3,T4,T5,T6,T7,T8> ToAction<T1, T2, T3, T4, T5, T6, T7, T8>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2,p3,p4,p5,p6,p7,p8) => f(new object[] { p1,p2,p3,p4,p5,p6,p7,p8 });
+		}
+
+		public static Action<T1,T2,T3,T4,T5,T6,T7,T8,T9> ToAction<T1, T2, T3, T4, T5, T6, T7, T8, T9>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2,p3,p4,p5,p6,p7,p8,p9) => f(new object[] { p1,p2,p3,p4,p5,p6,p7,p8,p9 });
+		}
+
+		public static Action<T1,T2,T3,T4,T5,T6,T7,T8,T9,T10> ToAction<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>(this IInvokable invokable)
+		{
+			Func<object[],object> f = GetInvokeFunc(invokable);
+			return (p1,p2,p3,p4,p5,p6,p7,p8,p9,p10) => f(new object[] { p1,p2,p3,p4,p5,p6,p7,p8,p9,p10 });
+		}
+		#endregion ToAction
+
+		#region internal GetInvokeFunc
 		internal static Func<object[], object> GetInvokeFunc(object invokable)
 		{
 			if (invokable is IInvokable inv)
@@ -3060,6 +3155,36 @@ namespace Jellequin.Runtime
 
 			MethodInfo mi = invokable.GetType().GetMethod("Invoke");
 			return (Func<object[], object>)typeof(Func<object[], object>).GetConstructors()[0].Invoke(new object[] { invokable, mi.MethodHandle.GetFunctionPointer() });
+		}
+		#endregion internal GetInvokeFunc
+
+		internal static Delegate CreateNativeDelegate(MethodInfo nativeDefinition,IInvokable innerInvokable)
+		{
+			//musi vygenerovat methodu, ktera bude mit parametry jako miInvoke a premapuje je na object[] a zavola invok.Invoke()
+			Type returnType = nativeDefinition.ReturnType;
+			ParameterInfo[] parameters = nativeDefinition.GetParameters();
+			int parameterCount = parameters.Length;
+			IEnumerable<Type> argumentTypes = parameters.Select(x=>x.ParameterType);
+			MethodInfo mi;
+			if (returnType==typeof(void))
+			{
+				string name = "Action";
+				if (parameterCount!=0)
+					name+="`"+parameterCount.ToString();
+				mi=typeof(IInvokableExtensions).GetMethods(BindingFlags.Public|BindingFlags.Static).FirstOrDefault(x => x.Name=="ToAction"&&x.ReturnType.Name==name);
+
+			}
+			else
+			{
+				mi=typeof(IInvokableExtensions).GetMethods(BindingFlags.Public|BindingFlags.Static).FirstOrDefault(x => x.Name=="ToFunc"&&x.ReturnType.Name=="Func`"+(parameterCount+1).ToString());
+				argumentTypes=argumentTypes.Concat(Enumerable.Repeat(returnType,1));
+			}
+
+			if (mi==null)
+				throw new RuntimeException(RuntimeExceptionReason.NoCompatibleMethod);
+
+			mi=mi.MakeGenericMethod(argumentTypes.ToArray());
+			return (Delegate)mi.Invoke(null,new object[] { innerInvokable });
 		}
 	}
 
@@ -3198,10 +3323,9 @@ namespace Jellequin.Runtime
 	}
 	#endregion IInvokableExtensions.ToFunc
 
-	public interface IJsFunction:IJsObject,IInvokable
+	public interface IJsFunction:IJsObject,IInvokable,IInstantiable
 	{
-        object Instantiate(object[] arguments);
-    }
+   }
 
 	public class ReflectionJsObject:IJsObject
 	{

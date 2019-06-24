@@ -51,8 +51,8 @@ tan(x) 	Returns the tangent of an angle
 	public class DateObject:IDoubleConvertible,IStringConvertible
 	{
 		DateTime _value;
-		static CultureInfo _enus=CultureInfo.GetCultureInfo("en-US");
-		static DateTime _unixDt=new DateTime(1970,1,1);
+		readonly static CultureInfo _enus=CultureInfo.GetCultureInfo("en-US");
+		readonly static DateTime _unixDt=new DateTime(1970,1,1);
 		#region ctors
 		public DateObject()
 		{
