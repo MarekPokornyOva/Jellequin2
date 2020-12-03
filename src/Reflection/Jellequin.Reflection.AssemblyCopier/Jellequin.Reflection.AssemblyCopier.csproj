@@ -10,8 +10,9 @@
     <Authors>Marek Pokorný</Authors>
     <Product>Jellequin</Product>
     <Description>Jellequin is EcmaScript compiler to CLR (.NET) assembly with debug ability. Jellequin.Reflection.AssemblyCopier copies assembly content to another module builder.</Description>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <PackageReleaseNotes>Initial version.</PackageReleaseNotes>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>

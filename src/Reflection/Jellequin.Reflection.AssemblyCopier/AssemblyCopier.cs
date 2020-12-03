@@ -140,7 +140,10 @@ namespace Jellequin.Reflection.Emit
 			ConstructorBuilder constructorCopy = _copiedTypes[constructorToCopy.DeclaringType].DefineConstructor(constructorToCopy.Name,constructorToCopy.Attributes,constructorToCopy.CallingConvention,Array.ConvertAll(parms,item => GetTypeCopy(item.ParameterType)));
 			int a = 0;
 			foreach (ParameterInfo item in parms)
-				constructorCopy.DefineParameter(++a,item.Attributes,item.Name);
+			{
+				ParameterBuilder parmCopy = constructorCopy.DefineParameter(++a,item.Attributes,item.Name);
+				CopyAttributes(item,parmCopy);
+			}
 			constructorCopy.SetImplementationFlags(constructorToCopy.GetMethodImplementationFlags());
 
 			CopyAttributes(constructorToCopy,constructorCopy);
@@ -177,7 +180,10 @@ namespace Jellequin.Reflection.Emit
 
 			int a = 0;
 			foreach (ParameterInfo item in parms)
-				methodCopy.DefineParameter(++a,item.Attributes,item.Name);
+			{
+				ParameterBuilder parmCopy = methodCopy.DefineParameter(++a,item.Attributes,item.Name);
+				CopyAttributes(item,parmCopy);
+			}
 			methodCopy.SetImplementationFlags(methodToCopy.GetMethodImplementationFlags());
 
 			CopyAttributes(methodToCopy,methodCopy);
@@ -235,8 +241,14 @@ namespace Jellequin.Reflection.Emit
 			=> IsRuntimeTypeRaw(type)||HasRuntimeArgs(type);
 
 		void CopyAttributes(MemberInfo src,ICustomAttributesContainer target)
+			=> CopyAttributes(src.GetCustomAttributesData(),target);
+
+		void CopyAttributes(ParameterInfo src,ICustomAttributesContainer target)
+			=> CopyAttributes(src.GetCustomAttributesData(),target);
+
+		void CopyAttributes(IList<CustomAttributeData> src,ICustomAttributesContainer target)
 		{
-			foreach (CustomAttributeData cad in src.GetCustomAttributesData())
+			foreach (CustomAttributeData cad in src)
 				target.SetCustomAttribute(_assemblyFixer.CustomAttributeData(cad));
 		}
 		#endregion copy definitions

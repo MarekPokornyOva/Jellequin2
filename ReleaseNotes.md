@@ -1,3 +1,8 @@
+### (2020-12-03)
+
+##### Jellequin.Reflection.AssemblyCopier - 1.0.1
+* copy both constructor and method parameters' attributes.
+
 ### (2019-06-24)  
 * bigger refactoring
 * separated reusable Reflection
